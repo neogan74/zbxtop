@@ -7,12 +7,13 @@ use crate::ssh::{run, SshTarget};
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 // ---------- Процессы zabbix_server ----------
 
 /// Одна строка `ps` для процесса zabbix_server.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZbxProc {
     pub pid: u32,
     pub cpu: f32, // %
@@ -28,7 +29,7 @@ pub struct ZbxProc {
 }
 
 /// Агрегат по роли.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ZbxRoleAgg {
     pub role: String,
     pub count: u32,
@@ -43,10 +44,12 @@ static PS_LINE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^\s*(?P<pid>\d+)\s+(?P<cpu>[\d.]+)\s+(?P<mem>[\d.]+)\s+(?P<rss>\d+)\s+(?P<etimes>\d+)\s+(?P<args>.+)$").unwrap()
 });
 
-/// Из args выделяем "zabbix_server: <role> #N [status...]".
-/// role может быть многословной: "history syncer", "lld manager", "preprocessing worker".
+/// Из args выделяем "zabbix_server: <role> #N [status...]" или
+/// "zabbix_proxy: <role> #N [status...]". Роль может быть многословной
+/// ("history syncer", "data sender", "vmware collector", "lld manager",
+/// "preprocessing worker").
 static TITLE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^zabbix_server:\s+(?P<role>[a-zA-Z][a-zA-Z _-]+?)(?:\s+#\d+)?(?:\s+\[(?P<status>[^\]]*)\])?\s*$").unwrap()
+    Regex::new(r"^zabbix_(?:server|proxy):\s+(?P<role>[a-zA-Z][a-zA-Z _-]+?)(?:\s+#\d+)?(?:\s+\[(?P<status>[^\]]*)\])?\s*$").unwrap()
 });
 
 pub fn parse_ps(output: &str) -> Vec<ZbxProc> {
@@ -113,7 +116,7 @@ pub async fn fetch_procs(t: &SshTarget) -> Result<Vec<ZbxProc>> {
     // на BSD-ps его нет, поэтому используем awk-фильтр зачистки.
     let out = run(
         t,
-        "ps -eo pid,pcpu,pmem,rss,etimes,args ww 2>/dev/null | awk 'NR>1 && /zabbix_server:/'",
+        "ps -eo pid,pcpu,pmem,rss,etimes,args ww 2>/dev/null | awk 'NR>1 && /zabbix_(server|proxy):/'",
     )
     .await?;
     Ok(parse_ps(&out))
@@ -121,7 +124,7 @@ pub async fn fetch_procs(t: &SshTarget) -> Result<Vec<ZbxProc>> {
 
 // ---------- Системные метрики ----------
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SysStats {
     pub load1: f32,
     pub load5: f32,
@@ -225,13 +228,13 @@ pub async fn fetch_sys(t: &SshTarget) -> Result<SysStats> {
 
 // ---------- Логи ----------
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LogLine {
     pub raw: String,
     pub level: LogLevel,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LogLevel {
     Error,
     Warning,
@@ -340,6 +343,22 @@ mod tests {
         assert_eq!(procs[1].role, "trapper");
         assert!(procs[1].idle, "waiting for connection counts as idle");
         assert_eq!(procs[2].role, "history syncer");
+    }
+
+    #[test]
+    fn parses_zabbix_proxy_lines() {
+        let sample = "\
+  2001  2.1  0.5 198765 54321 zabbix_proxy: poller #1 [got 5 values in 0.001 sec, idle 1 sec]
+  2002  0.5  0.3  98765 54320 zabbix_proxy: data sender [sent 100 values, idle 5 sec]
+  2003  0.1  0.2  87654 54310 zabbix_proxy: heartbeat sender [sending heartbeat]
+  2004  1.0  0.6 124345 50000 zabbix_proxy: history syncer #1 [synced 12 items in 0.0005 sec, idle 1 sec]
+";
+        let procs = parse_ps(sample);
+        assert_eq!(procs.len(), 4);
+        assert_eq!(procs[0].role, "poller");
+        assert_eq!(procs[1].role, "data sender");
+        assert_eq!(procs[2].role, "heartbeat sender");
+        assert_eq!(procs[3].role, "history syncer");
     }
 
     #[test]
