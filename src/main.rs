@@ -20,7 +20,7 @@ use crate::app::{App, HostState, Tab};
 use crate::collectors::{runtime_control, RuntimeCmd};
 use crate::db::DbTarget;
 use crate::hosts::{HostConfig, HostsConfig};
-use crate::source::{spawn_collectors, CollectorHandles, HostMsg, HostSpawn};
+use crate::source::{spawn_collectors, CollectorHandles, CollectorMsg, HostMsg, HostSpawn};
 use crate::ssh::SshTarget;
 use crate::zbxstats::ZbxStatsTarget;
 use anyhow::{Context, Result};
@@ -349,8 +349,10 @@ async fn run_app<B: ratatui::backend::Backend>(
                 // Запись (если включена) — до apply_msg, потому что HostMsg
                 // потребляется ниже. Recorder клонирует данные внутри.
                 if let Some(rec) = &mut recorder {
-                    rec.write(&host_msg);
-                    app.recorded_events = rec.events_written;
+                    if !matches!(host_msg.msg, CollectorMsg::Reset) {
+                        rec.write(&host_msg);
+                        app.recorded_events = rec.events_written;
+                    }
                 }
                 if !app.paused {
                     if let Some(host) = app.hosts.get_mut(host_msg.host_idx) {

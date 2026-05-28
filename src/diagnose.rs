@@ -9,7 +9,6 @@
 //! Только зная оба факта, можем поставить диагноз.
 
 use crate::app::HostState;
-use crate::collectors::ZbxRoleAgg;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
@@ -238,10 +237,6 @@ fn rule_replication_lag(app: &HostState) -> Option<Diagnosis> {
         sources: vec!["db"],
     })
 }
-
-// Заглушка: чтобы линтер видел импорт.
-#[allow(dead_code)]
-fn _link_helper(_: &ZbxRoleAgg) {}
 
 #[cfg(test)]
 mod tests {

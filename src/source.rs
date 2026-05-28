@@ -437,6 +437,10 @@ fn spawn_log_stream(
     })
 }
 
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
 async fn run_stream(
     host_idx: usize,
     target: &SshTarget,
@@ -444,7 +448,7 @@ async fn run_stream(
     initial_lines: usize,
     tx: &mpsc::Sender<HostMsg>,
 ) -> Result<()> {
-    let remote_cmd = format!("tail -n {} -F -- {} 2>/dev/null", initial_lines, log_path);
+    let remote_cmd = format!("tail -n {} -F -- {} 2>/dev/null", initial_lines, shell_quote(log_path));
 
     let mut cmd = Command::new("ssh");
     cmd.args(&target.extra_opts);

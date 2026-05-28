@@ -101,28 +101,28 @@ impl RecordedMsg {
             CollectorMsg::Procs { result, took } => Self::Procs {
                 result: result
                     .as_ref()
-                    .map(|v| v.clone())
+                    .cloned()
                     .map_err(|e| format!("{e:#}")),
                 took_ms: took.as_millis() as u64,
             },
             CollectorMsg::Sys { result, took } => Self::Sys {
                 result: result
                     .as_ref()
-                    .map(|v| v.clone())
+                    .cloned()
                     .map_err(|e| format!("{e:#}")),
                 took_ms: took.as_millis() as u64,
             },
             CollectorMsg::Stats { result, took } => Self::Stats {
                 result: result
                     .as_ref()
-                    .map(|v| v.clone())
+                    .cloned()
                     .map_err(|e| format!("{e:#}")),
                 took_ms: took.as_millis() as u64,
             },
             CollectorMsg::Db { result, took } => Self::Db {
                 result: result
                     .as_ref()
-                    .map(|v| v.clone())
+                    .cloned()
                     .map_err(|e| format!("{e:#}")),
                 took_ms: took.as_millis() as u64,
             },

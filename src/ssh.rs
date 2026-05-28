@@ -44,7 +44,7 @@ fn default_opts() -> Vec<String> {
         "-o".into(),
         "ControlMaster=auto".into(),
         "-o".into(),
-        "ControlPath=/tmp/ztop-ssh-%r@%h:%p".into(),
+        "ControlPath=~/.ssh/ztop-ctl-%r@%h:%p".into(),
         "-o".into(),
         "ControlPersist=60s".into(),
     ]

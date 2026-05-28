@@ -169,7 +169,7 @@ fn pct_decode(s: &str) -> String {
         out.push(bytes[i]);
         i += 1;
     }
-    String::from_utf8_lossy(&out).into_owned()
+    String::from_utf8(out).unwrap_or_default()
 }
 
 fn pct_encode(s: &str) -> String {

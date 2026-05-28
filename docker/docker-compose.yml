@@ -1,0 +1,90 @@
+# ztop testbed: full Zabbix stack для прогона ztop локально + стресс-сценарии.
+#
+# Порты на host наружу — нестандартные, чтобы не конфликтовать с локальным
+# zabbix/postgres на машине разработчика:
+#   - PG       55432  (стандартно 5432)
+#   - SSH      22022  (стандартно 22)
+#   - trapper  10051  (стандартно 10051, стандартный, обычно не занят)
+#   - web      8088   (стандартно 8080)
+#
+# Запуск:
+#   ./setup.sh         # генерирует SSH key
+#   docker compose up -d
+#
+# Подключиться ztop'ом (после правки ~/.ssh/config, см. setup.sh output):
+#   ztop --config ./hosts.toml
+
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zabbix -d zabbix"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  zabbix-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.zabbix-server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_SERVER_HOST: postgres
+      DB_SERVER_PORT: "5432"
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+      # Разрешаем zabbix.stats со всех IP — это testbed.
+      ZBX_STATSALLOWEDIP: "0.0.0.0/0,::/0"
+      # Чтобы ztop'у было что показывать в логе.
+      ZBX_DEBUGLEVEL: "3"
+    ports:
+      - "127.0.0.1:10051:10051"
+      - "127.0.0.1:22022:22"
+    volumes:
+      - ./ssh-keys:/etc/ztop-ssh-keys:ro
+
+  zabbix-agent:
+    image: zabbix/zabbix-agent2:ubuntu-6.0-latest
+    restart: unless-stopped
+    depends_on:
+      - zabbix-server
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_HOSTNAME: ztop-testbed-agent
+      ZBX_PASSIVE_ALLOW: "true"
+      ZBX_ACTIVE_ALLOW: "true"
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:ubuntu-6.0-latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      zabbix-server:
+        condition: service_started
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: "10051"
+      DB_SERVER_HOST: postgres
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix
+      POSTGRES_DB: zabbix
+      PHP_TZ: "UTC"
+    ports:
+      - "127.0.0.1:8088:8080"
+
+volumes:
+  pg-data:

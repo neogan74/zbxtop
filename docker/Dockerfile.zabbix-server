@@ -1,0 +1,32 @@
+# Расширяем официальный zabbix-server-pgsql sshd-сервером + sudoers, чтобы
+# ztop мог логиниться по SSH (как на проде) и звать `zabbix_server -R`.
+FROM zabbix/zabbix-server-pgsql:ubuntu-6.0-latest
+
+USER root
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        openssh-server \
+        sudo \
+        procps \
+        less \
+        ca-certificates \
+        curl \
+        iproute2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/run/sshd /home/ztop/.ssh \
+    && useradd -m -s /bin/bash ztop \
+    && chown -R ztop:ztop /home/ztop \
+    && chmod 700 /home/ztop/.ssh \
+    && echo 'ztop ALL=(ALL) NOPASSWD: /usr/sbin/zabbix_server -R *' >> /etc/sudoers \
+    && sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config \
+    && sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config \
+    && sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config \
+    && echo 'AllowUsers ztop' >> /etc/ssh/sshd_config
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 22 10051
+
+ENTRYPOINT ["/entrypoint.sh"]

@@ -206,9 +206,9 @@ pub async fn fetch_sys(t: &SshTarget) -> Result<SysStats> {
             "--MEMINFO--" => section = "mem",
             "--UPTIME--" => section = "up",
             _ => match section {
-                "load" => load_buf.push_str(&format!("{line}\n")),
-                "mem" => mem_buf.push_str(&format!("{line}\n")),
-                "up" => up_buf.push_str(&format!("{line}\n")),
+                "load" => { load_buf.push_str(line); load_buf.push('\n'); }
+                "mem" => { mem_buf.push_str(line); mem_buf.push('\n'); }
+                "up" => { up_buf.push_str(line); up_buf.push('\n'); }
                 _ => {}
             },
         }
@@ -254,7 +254,7 @@ pub fn classify(line: &str) -> LogLevel {
         LogLevel::Error
     } else if l.contains("slow query")
         || l.contains("warning")
-        || l.contains("housekeeper") && l.contains("delete")
+        || (l.contains("housekeeper") && l.contains("delete"))
     {
         LogLevel::Warning
     } else if l.contains("debug") {
@@ -266,9 +266,12 @@ pub fn classify(line: &str) -> LogLevel {
     }
 }
 
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
 pub async fn fetch_log_tail(t: &SshTarget, path: &str, lines: usize) -> Result<Vec<LogLine>> {
-    // shell-escape пути — на MVP полагаемся, что путь не содержит пробелов/кавычек.
-    let cmd = format!("tail -n {lines} -- {path} 2>/dev/null");
+    let cmd = format!("tail -n {lines} -- {} 2>/dev/null", shell_quote(path));
     let out = run(t, &cmd).await?;
     Ok(out
         .lines()

@@ -8,7 +8,7 @@ license = "MIT"
 [dependencies]
 ratatui = "0.28"
 crossterm = { version = "0.28", features = ["event-stream"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-util", "sync", "signal", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-util", "sync", "net"] }
 futures = "0.3"
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
