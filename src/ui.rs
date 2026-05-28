@@ -2,7 +2,7 @@
 
 use crate::app::{App, Tab};
 use crate::collectors::LogLevel;
-use crate::diagnose::{diagnose, Severity};
+use crate::diagnose::{diagnose, Diagnosis, Severity};
 use crate::source::{SourceKind, SourceState};
 use std::time::Duration;
 use ratatui::{
@@ -14,14 +14,20 @@ use ratatui::{
 };
 
 pub fn draw(f: &mut Frame, app: &App) {
+    // Compute diagnoses once per frame; reused by header banner, overview table, and aggregate.
+    let per_host_diagnoses: Vec<Vec<Diagnosis>> =
+        app.hosts.iter().map(|h| diagnose(h)).collect();
+
     // Cross-source диагнозы по всем хостам, с префиксом [name]. Показываем
     // максимум 3 — самые severe. Высота строки динамическая.
     let mut diagnoses: Vec<_> = app
         .hosts
         .iter()
-        .flat_map(|h| {
-            diagnose(h).into_iter().map(move |mut d| {
-                d.title = format!("[{}] {}", h.name, d.title);
+        .zip(&per_host_diagnoses)
+        .flat_map(|(h, ds)| {
+            let name = h.name.clone();
+            ds.iter().cloned().map(move |mut d| {
+                d.title = format!("[{}] {}", name, d.title);
                 d
             })
         })
@@ -47,7 +53,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         draw_diagnoses(f, &diagnoses, root[2]);
     }
     match app.tab {
-        Tab::Overview => draw_overview(f, app, root[3]),
+        Tab::Overview => draw_overview(f, app, &per_host_diagnoses, root[3]),
         Tab::Processes => draw_processes(f, app, root[3]),
         Tab::Graphs => draw_graphs(f, app, root[3]),
         Tab::Logs => draw_logs(f, app, root[3]),
@@ -385,17 +391,17 @@ fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
 /// v0.5a/b — overview по всем хостам. Сверху — таблица per-host;
 /// внизу — aggregate-строка по всему флоту (sum CPU, max load, sum queue,
 /// total active diagnoses).
-fn draw_overview(f: &mut Frame, app: &App, area: Rect) {
+fn draw_overview(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(5), Constraint::Length(4)])
         .split(area);
 
-    draw_overview_table(f, app, chunks[0]);
-    draw_overview_aggregate(f, app, chunks[1]);
+    draw_overview_table(f, app, diagnoses, chunks[0]);
+    draw_overview_aggregate(f, app, diagnoses, chunks[1]);
 }
 
-fn draw_overview_table(f: &mut Frame, app: &App, area: Rect) {
+fn draw_overview_table(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], area: Rect) {
     let header = Row::new(vec![
         Cell::from(""),
         Cell::from("Host"),
@@ -450,7 +456,7 @@ fn draw_overview_table(f: &mut Frame, app: &App, area: Rect) {
                 .and_then(|s| s.queue_total())
                 .map(|q| q.to_string())
                 .unwrap_or_else(|| "—".into());
-            let diag_count = diagnose(h).len();
+            let diag_count = diagnoses[i].len();
 
             // Два маркера: cursor (для выбора) и focus (текущий открытый хост).
             // `▸` — где сейчас курсор, `●` — какой хост в drill-down открыт.
@@ -520,7 +526,7 @@ fn draw_overview_table(f: &mut Frame, app: &App, area: Rect) {
 
 /// Fleet-level summary под таблицей Overview. Покажет, как чувствует себя
 /// весь пул серверов в одной строке.
-fn draw_overview_aggregate(f: &mut Frame, app: &App, area: Rect) {
+fn draw_overview_aggregate(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], area: Rect) {
     let n = app.hosts.len() as f64;
     let total_cpu: f64 = app.hosts.iter().map(|h| h.cpu_sum()).sum();
     let total_queue: u64 = app
@@ -547,16 +553,11 @@ fn draw_overview_aggregate(f: &mut Frame, app: &App, area: Rect) {
     } else {
         0.0
     };
-    let total_diag: usize = app
-        .hosts
+    let total_diag: usize = diagnoses.iter().map(|ds| ds.len()).sum();
+    let critical_diag: usize = diagnoses
         .iter()
-        .map(|h| crate::diagnose::diagnose(h).len())
-        .sum();
-    let critical_diag: usize = app
-        .hosts
-        .iter()
-        .flat_map(|h| crate::diagnose::diagnose(h))
-        .filter(|d| d.severity == crate::diagnose::Severity::Critical)
+        .flat_map(|ds| ds.iter())
+        .filter(|d| d.severity == Severity::Critical)
         .count();
 
     let healthy = app
