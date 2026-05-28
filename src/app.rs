@@ -270,6 +270,12 @@ impl HostState {
 /// Глобальный state приложения. UI-state (вкладки, фильтры, тосты)
 /// храним здесь; всё, что приходит из коллекторов конкретного хоста — в
 /// соответствующем `HostState`.
+///
+/// WARNING: `derive(Clone)` is kept for convenience but cloning `App` shares the
+/// `Arc<AtomicU32>`/`Arc<AtomicBool>` replay state fields — both copies will observe
+/// and mutate the same counters. `App` is never cloned today; if you add a clone site,
+/// ensure the shared replay state is intentional or use `Arc::new(AtomicU32::new(0))`
+/// to give the clone its own copy.
 #[derive(Clone, Debug)]
 pub struct App {
     pub hosts: Vec<HostState>,

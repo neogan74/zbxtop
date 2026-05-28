@@ -266,22 +266,6 @@ pub fn classify(line: &str) -> LogLevel {
     }
 }
 
-fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
-}
-
-pub async fn fetch_log_tail(t: &SshTarget, path: &str, lines: usize) -> Result<Vec<LogLine>> {
-    let cmd = format!("tail -n {lines} -- {} 2>/dev/null", shell_quote(path));
-    let out = run(t, &cmd).await?;
-    Ok(out
-        .lines()
-        .map(|l| LogLine {
-            level: classify(l),
-            raw: l.to_string(),
-        })
-        .collect())
-}
-
 // ---------- Runtime control ----------
 
 #[derive(Clone, Copy, Debug)]
