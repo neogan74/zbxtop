@@ -1,18 +1,18 @@
 #!/bin/bash
-# stress_log_spam.sh — повышаем log level zabbix_server несколько раз.
-# Это разворачивает DEBUG-логи: десятки строк в секунду в zabbix_server.log.
+# stress_log_spam.sh — raise the zabbix_server log level several times.
+# This enables DEBUG logs: dozens of lines per second in zabbix_server.log.
 #
-# Что должно произойти в ztop:
-#   - таб «3 Logs» льёт строки real-time (streaming, не поллингом)
-#   - badge [log ●] остаётся «streaming, last 0s ago»
-#   - можно ставить фильтр / на специфический worker
-#   - после стресс-теста: log_level_decrease вернуть обратно
+# What should happen in ztop:
+#   - tab "3 Logs" streams lines in real-time (streaming, not polling)
+#   - badge [log ●] stays "streaming, last 0s ago"
+#   - you can set a filter / for a specific worker
+#   - after the stress test: run log_level_decrease to restore the level
 #
-# Использование:
-#   ./stress_log_spam.sh up    # ramp up до 5 (DEBUG)
-#   ./stress_log_spam.sh down  # вернуть к дефолту
+# Usage:
+#   ./stress_log_spam.sh up    # ramp up to 5 (DEBUG)
+#   ./stress_log_spam.sh down  # restore to default
 #
-# Дефолтное действие: up.
+# Default action: up.
 
 set -e
 ACTION=${1:-up}

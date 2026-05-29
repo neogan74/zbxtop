@@ -1,8 +1,8 @@
 #!/bin/bash
-# setup.sh — однократная подготовка testbed:
-#   1. Генерирует SSH ключ для пользователя ztop в контейнере.
-#   2. Печатает блок ~/.ssh/config, который нужно вставить руками.
-#   3. Печатает команду подключения.
+# setup.sh — one-time testbed preparation:
+#   1. Generates an SSH key for the ztop user inside the container.
+#   2. Prints the ~/.ssh/config block that must be added manually.
+#   3. Prints the connection command.
 
 set -e
 cd "$(dirname "$0")"
@@ -64,7 +64,7 @@ cat <<EOF
     ./stress/stress_api.sh 60               # API spam 60 sec
     ./stress/stress_log_spam.sh             # ramp up log_level
 
-   В ztop наблюдай: панель Diagnoses, таб 4 Internals (busy syncer),
-   таб 5 Database (locks_waiting, idle_in_transaction, top_queries).
+   In ztop observe: the Diagnoses strip, tab 4 Internals (busy syncer),
+   tab 5 Database (locks_waiting, idle_in_transaction, top_queries).
 
 EOF

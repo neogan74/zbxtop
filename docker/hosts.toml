@@ -1,13 +1,13 @@
-# ztop config для локального docker-compose testbed.
+# ztop config for the local docker-compose testbed.
 #
-# Используй как:  ztop --config docker/hosts.toml
-# Или скопируй в  ~/.config/ztop/hosts.toml  и запускай просто `ztop`.
+# Use as:  ztop --config docker/hosts.toml
+# Or copy to  ~/.config/ztop/hosts.toml  and just run `ztop`.
 
 [[host]]
 name = "testbed"
-ssh = "ztop-testbed"                          # alias из ~/.ssh/config (см. setup.sh)
+ssh = "ztop-testbed"                          # alias from ~/.ssh/config (see setup.sh)
 log = "/var/log/zabbix/zabbix_server.log"
-sudo = true                                   # zabbix_server -R через sudo (sudoers в Dockerfile)
+sudo = true                                   # zabbix_server -R via sudo (sudoers in Dockerfile)
 
 # zabbix.stats доступен на trapper-порту 10051 (проброшен из контейнера).
 stats_host = "127.0.0.1"
@@ -17,7 +17,7 @@ stats_port = 10051
 db_url = "postgres://zabbix:zabbix@127.0.0.1:55432/zabbix?sslmode=disable"
 
 # ---- Probes ----
-# Проверяют сеть из машины ztop. Все три должны быть OK на здоровом testbed.
+# Check the network from the ztop machine. All three should be OK on a healthy testbed.
 
 [[probe]]
 name = "Trapper TCP"
@@ -37,8 +37,8 @@ kind = "dns"
 target = "localhost"
 interval = 10
 
-# Web UI probe (port 8088 — zabbix-web container). Не критично, но видно
-# если PHP/Apache в zabbix-web лёг — это диагностика 4-го слоя.
+# Web UI probe (port 8088 — zabbix-web container). Not critical, but visible
+# if PHP/nginx in zabbix-web goes down — this is 4th-layer diagnostics.
 [[probe]]
 name = "Web frontend"
 kind = "tcp"

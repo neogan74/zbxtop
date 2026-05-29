@@ -1,5 +1,5 @@
-# Расширяем официальный zabbix-server-pgsql sshd-сервером + sudoers, чтобы
-# ztop мог логиниться по SSH (как на проде) и звать `zabbix_server -R`.
+# Extend the official zabbix-server-pgsql image with sshd + sudoers so that
+# ztop can log in over SSH (as in production) and run `zabbix_server -R`.
 FROM zabbix/zabbix-server-pgsql:ubuntu-6.0-latest
 
 USER root

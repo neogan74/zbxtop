@@ -1,19 +1,19 @@
-//! Второй транспорт: бинарный Zabbix-протокол на trapper-порту (TCP 10051).
+//! Second transport: binary Zabbix protocol on the trapper port (TCP 10051).
 //!
-//! Это **не** HTTP API: PHP/Apache/БД не задействованы. Запрос отправляется
-//! напрямую процессу `zabbix_server`, который сам ведёт self-monitoring и
-//! отдаёт богатую внутреннюю телеметрию: busy% по типам процессов, кэши,
-//! очередь, vps.
+//! This is **not** the HTTP API: PHP/Apache/DB are not involved. The request
+//! goes directly to the `zabbix_server` process, which does its own
+//! self-monitoring and returns rich internal telemetry: busy% per process type,
+//! caches, queue, vps.
 //!
-//! Авторизация — IP-ACL через `StatsAllowedIP=<ip>` в `zabbix_server.conf`.
-//! Никаких токенов; в этом плюс — нечему истечь в инциденте.
+//! Authentication is IP-ACL via `StatsAllowedIP=<ip>` in `zabbix_server.conf`.
+//! No tokens; this is an advantage — nothing can expire during an incident.
 //!
-//! Формат пакета (header 13 байт + JSON):
-//!   "ZBXD" (4)  | flags (1, обычно 0x01) | datalen LE u32 (4) | reserved (4)
-//! Старый формат до 4.0 читает байты 5..13 как u64 LE длину — но если данные
-//! < 4 ГиБ и старшие 4 байта нулевые, обе схемы совместимы. Поэтому шлём
-//! "ZBXD\x01" + datalen_u32_le + 0000_0000 — работает и со старыми и с
-//! новыми серверами.
+//! Packet format (13-byte header + JSON):
+//!   "ZBXD" (4)  | flags (1, usually 0x01) | datalen LE u32 (4) | reserved (4)
+//! The old format before 4.0 reads bytes 5..13 as a LE u64 length — but if data
+//! is < 4 GiB and the high 4 bytes are zero, both schemes are compatible. So we
+//! send "ZBXD\x01" + datalen_u32_le + 0000_0000 — works with both old and new
+//! servers.
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -51,7 +51,7 @@ const FLAG_COMPRESSED: u8 = 0x02;
 const HEADER_LEN: usize = 13;
 const MAX_RESPONSE: usize = 16 * 1024 * 1024; // sanity cap, 16 MiB
 
-/// Собрать пакет: header + JSON payload.
+/// Assemble a packet: header + JSON payload.
 fn frame(payload: &[u8]) -> Vec<u8> {
     let datalen = payload.len() as u32;
     let mut buf = Vec::with_capacity(HEADER_LEN + payload.len());
@@ -63,7 +63,7 @@ fn frame(payload: &[u8]) -> Vec<u8> {
     buf
 }
 
-/// Прочитать ответ: 13-байтовый header + body длины из заголовка.
+/// Read the response: 13-byte header + body of the length from the header.
 async fn read_response(stream: &mut TcpStream, deadline: Duration) -> Result<Vec<u8>> {
     let mut header = [0u8; HEADER_LEN];
     timeout(deadline, stream.read_exact(&mut header))
@@ -78,8 +78,8 @@ async fn read_response(stream: &mut TcpStream, deadline: Duration) -> Result<Vec
     }
     let flags = header[4];
     if flags & FLAG_COMPRESSED != 0 {
-        // Поддержку компрессии добавим, когда понадобится — большинство ответов
-        // на zabbix.stats умещаются в килобайт-другой, smysl-а сжимать нет.
+        // Compression support will be added when needed — most zabbix.stats
+        // responses fit in a kilobyte or two, so there is no point compressing.
         return Err(anyhow!("compressed response not supported yet"));
     }
     let datalen = u32::from_le_bytes([header[5], header[6], header[7], header[8]]) as usize;
@@ -108,7 +108,7 @@ pub async fn fetch_stats(target: &ZbxStatsTarget) -> Result<ZabbixStats> {
         .with_context(|| format!("connect timeout: {}", target.addr()))?
         .with_context(|| format!("connect failed: {}", target.addr()))?;
 
-    // Уменьшаем TCP-задержку — пакет маленький, один write.
+    // Reduce TCP delay — the packet is small, a single write.
     stream.set_nodelay(true).ok();
 
     timeout(target.timeout, stream.write_all(&pkt))
@@ -136,7 +136,7 @@ pub async fn fetch_stats(target: &ZbxStatsTarget) -> Result<ZabbixStats> {
 
 // ---------- response types ----------
 
-/// Внешняя обёртка ответа: {"response": "success", "data": {...}}.
+/// Outer response wrapper: {"response": "success", "data": {...}}.
 #[derive(Debug, Deserialize)]
 struct StatsResponse {
     response: String,
@@ -148,14 +148,14 @@ struct StatsResponse {
 pub struct ZabbixStats {
     #[serde(default)]
     pub version: String,
-    /// uptime сервера в секундах (приходит строкой в старых версиях, числом в новых).
+    /// Server uptime in seconds (arrives as a string in old versions, as a number in new ones).
     #[serde(default, deserialize_with = "de_string_or_number")]
     pub uptime: u64,
     #[serde(default)]
     pub hostname: String,
-    /// Размер очереди в форме, в которой её отдал сервер. Может быть числом
-    /// (старый формат) или объектом с буферами. Храним как Value для гибкости
-    /// между версиями.
+    /// Queue size in the form returned by the server. May be a number
+    /// (old format) or an object with buffers. Stored as Value for flexibility
+    /// across versions.
     #[serde(default)]
     pub queue: serde_json::Value,
     /// `process.<type>` — busy% и count для каждого типа процесса.
@@ -172,20 +172,20 @@ pub struct ZabbixStats {
 }
 
 impl ZabbixStats {
-    /// Извлекаем queue как одно число (если оно числовое) либо None.
+    /// Extract the queue as a single number (if it is numeric) or None.
     pub fn queue_total(&self) -> Option<u64> {
         self.queue.as_u64()
     }
-    /// Утилизация cache — pfree (свободные %) для любого из caches.
-    /// Возвращает 100 - pfree, то есть «занято %».
+    /// Cache utilisation — pfree (free %) for any of the caches.
+    /// Returns 100 - pfree, i.e. "used %".
     pub fn cache_used_pct(&self, name: CacheName) -> Option<f32> {
         let root = match name {
             CacheName::Write => &self.wcache,
             CacheName::Read => &self.rcache,
             CacheName::Value => &self.vcache,
         };
-        // wcache может быть либо {"history": {"pfree":...}}, либо плоско {"pfree":...},
-        // а у vcache часто отдельный {"buffer":{"pfree":...}}. Пробуем оба пути.
+        // wcache may be either {"history": {"pfree":...}} or flat {"pfree":...},
+        // and vcache often has a separate {"buffer":{"pfree":...}}. We try both paths.
         let pfree = root
             .get("buffer")
             .and_then(|v| v.get("pfree"))
@@ -194,7 +194,7 @@ impl ZabbixStats {
             .and_then(|v| v.as_f64())?;
         Some(100.0 - pfree as f32)
     }
-    /// Записей в секунду (total). У старых версий поле может отсутствовать.
+    /// Values per second (total). The field may be absent in old versions.
     pub fn vps_total(&self) -> Option<f64> {
         self.vps
             .get("total")
@@ -228,7 +228,7 @@ pub struct BusyStats {
     pub min: f32,
 }
 
-/// Десериализация числа, которое может прилететь как String или как number.
+/// Deserialise a number that may arrive as a String or as a number.
 fn de_string_or_number<'de, D>(d: D) -> Result<u64, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -263,7 +263,7 @@ mod tests {
         assert_eq!(f.len(), HEADER_LEN + 2);
     }
 
-    /// Реалистичный sample ответа zabbix.stats (Zabbix 6.0).
+    /// Realistic sample of a zabbix.stats response (Zabbix 6.0).
     const SAMPLE: &str = r#"{
         "response": "success",
         "data": {
@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn uptime_accepts_number_form() {
-        // Новые версии шлют uptime числом, а не строкой.
+        // New versions send uptime as a number, not a string.
         let j = r#"{"response":"success","data":{"uptime":42}}"#;
         let resp: StatsResponse = serde_json::from_str(j).expect("parse");
         assert_eq!(resp.data.uptime, 42);

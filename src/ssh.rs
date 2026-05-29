@@ -1,10 +1,10 @@
-//! SSH transport: вызывает системный `ssh` через tokio.
+//! SSH transport: invokes the system `ssh` via tokio.
 //!
-//! Почему именно system `ssh`, а не `russh`/`ssh2`:
-//! - бесплатно работает с ~/.ssh/config, ControlMaster, ключами, агентом, jump-хостами;
-//! - для прототипа это критично — мы хотим попасть в любую существующую инфраструктуру;
-//! - на v2 имеет смысл заменить на одну долгую сессию через `russh`, чтобы держать
-//!   tail -F стрим и не платить за TCP-handshake на каждый poll.
+//! Why system `ssh` rather than `russh`/`ssh2`:
+//! - works for free with ~/.ssh/config, ControlMaster, keys, agent, jump hosts;
+//! - this is critical for a prototype — we want to reach any existing infrastructure;
+//! - for v2 it makes sense to switch to a single long-lived session via `russh` to keep
+//!   a tail -F stream without paying for a TCP handshake on every poll.
 
 use anyhow::{anyhow, Context, Result};
 use std::time::Duration;
@@ -13,11 +13,11 @@ use tokio::time::timeout;
 
 #[derive(Clone, Debug)]
 pub struct SshTarget {
-    /// Имя хоста или alias из ~/.ssh/config. Может быть "user@host".
+    /// Hostname or alias from ~/.ssh/config. May be "user@host".
     pub host: String,
-    /// Дополнительные опции (-o ...). По умолчанию задаём ControlMaster для мультиплексирования.
+    /// Additional options (-o ...). Defaults set ControlMaster for multiplexing.
     pub extra_opts: Vec<String>,
-    /// Глобальный таймаут на одну команду.
+    /// Global timeout per command.
     pub timeout: Duration,
 }
 
@@ -32,8 +32,8 @@ impl SshTarget {
 }
 
 fn default_opts() -> Vec<String> {
-    // ControlMaster auto+ControlPersist резко сокращают latency повторных команд.
-    // Путь к сокету — в /tmp с уникальным именем по хосту.
+    // ControlMaster auto+ControlPersist greatly reduce latency for repeated commands.
+    // Socket path is in /tmp with a unique name per host.
     vec![
         "-o".into(),
         "BatchMode=yes".into(),
@@ -50,8 +50,8 @@ fn default_opts() -> Vec<String> {
     ]
 }
 
-/// Выполнить shell-команду на удалённом хосте и вернуть stdout как строку.
-/// stderr добавляется в текст ошибки, если код возврата != 0.
+/// Execute a shell command on the remote host and return stdout as a string.
+/// stderr is appended to the error message if the exit code is non-zero.
 pub async fn run(target: &SshTarget, remote_cmd: &str) -> Result<String> {
     let mut cmd = Command::new("ssh");
     cmd.args(&target.extra_opts);

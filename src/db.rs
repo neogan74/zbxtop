@@ -1,16 +1,17 @@
-//! v0.4 — DB-скрейпер (PostgreSQL + MySQL/MariaDB).
+//! v0.4 — DB scraper (PostgreSQL + MySQL/MariaDB).
 //!
-//! Идея: третий слой доступности. SSH-source падает первым (хост умер),
-//! zabbix.stats — вторым (процесс zabbix_server умер), DB-source — третьим
-//! (база умерла). Когда видны два слоя из трёх — сразу понятно, где отказ.
+//! Idea: the third availability layer. The SSH source fails first (host is dead),
+//! zabbix.stats fails second (zabbix_server process is dead), the DB source fails
+//! third (the database is dead). When two of three layers are visible, the failure
+//! point is immediately obvious.
 //!
-//! Backend выбирается автоматически по схеме URL:
-//!   `postgres://...` или `postgresql://...` → PostgreSQL
-//!   `mysql://...`                            → MySQL/MariaDB
+//! The backend is selected automatically by URL scheme:
+//!   `postgres://...` or `postgresql://...` → PostgreSQL
+//!   `mysql://...`                           → MySQL/MariaDB
 //!
-//! PostgreSQL: persistent connection (v0.4b), fail-fast при ошибке запроса.
-//! MySQL: persistent connection, try-or-default per-query (компатибельность
-//! с разными версиями и edition-ами MySQL/MariaDB).
+//! PostgreSQL: persistent connection (v0.4b), fail-fast on query error.
+//! MySQL: persistent connection, try-or-default per-query (compatibility
+//! with different MySQL/MariaDB versions and editions).
 
 use anyhow::{Context, Result};
 use native_tls::TlsConnector as NativeTlsConnector;
@@ -23,15 +24,15 @@ use tokio_postgres::Client;
 
 #[derive(Clone, Debug)]
 pub struct DbTarget {
-    /// Полная connection string в формате libpq URL или mysql:// URL.
-    /// Примеры:
+    /// Full connection string in libpq URL or mysql:// URL format.
+    /// Examples:
     ///   `postgres://ztop_ro:secret@db-host:5432/zabbix?sslmode=require`
     ///   `mysql://ztop_ro:secret@db-host:3306/zabbix?ssl-mode=REQUIRED`
     pub url: String,
     pub timeout: Duration,
-    /// Принимать TLS-сертификаты без верификации CA/CN. Для self-signed
-    /// или приватных CA на внутреннем периметре. Применяется к PG; для
-    /// MySQL аналог задаётся параметрами URL (`ssl-mode=PREFERRED`).
+    /// Accept TLS certificates without CA/CN verification. For self-signed
+    /// or private CA certificates on an internal network. Applies to PG; for
+    /// MySQL the equivalent is set via URL parameters (`ssl-mode=PREFERRED`).
     pub insecure_tls: bool,
 }
 
@@ -53,13 +54,13 @@ impl DbTarget {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct DbStats {
-    /// "postgres" | "mysql" — выставляется в DbBackend::fetch_stats.
+    /// "postgres" | "mysql" — set in DbBackend::fetch_stats.
     pub backend: String,
     pub connections: ConnectionStats,
     pub top_queries: Vec<LongQuery>,
     pub locks_waiting: u32,
     pub tables: Vec<TableSize>,
-    /// None — primary; Some(seconds) — replica с лагом репликации.
+    /// None — primary; Some(seconds) — replica with that replication lag.
     pub replication_lag_sec: Option<f64>,
     pub version: String,
 }
@@ -98,7 +99,7 @@ pub struct TableSize {
 
 // ---------- queries ----------
 
-/// Сводка по состояниям коннектов.
+/// Summary of connection states.
 const Q_CONNECTIONS: &str = "
 SELECT
     coalesce(state, 'other') AS state,
@@ -109,8 +110,8 @@ WHERE pid <> pg_backend_pid()
 GROUP BY 1, 2
 ";
 
-/// Топ-N запросов, упорядоченных по «возрасту» (now - query_start).
-/// Берём только не-idle, чтобы не показывать висящие коннект-пулы.
+/// Top-N queries ordered by "age" (now - query_start).
+/// We only include non-idle queries to avoid showing idle connection-pool connections.
 const Q_TOP_QUERIES: &str = "
 SELECT
     pid::int4,
@@ -129,8 +130,8 @@ LIMIT 10
 
 const Q_LOCKS_WAITING: &str = "SELECT count(*)::bigint FROM pg_locks WHERE NOT granted";
 
-/// Размеры Zabbix-таблиц, которые типично взрываются (history*, trends*, events).
-/// pg_total_relation_size учитывает индексы и TOAST.
+/// Sizes of Zabbix tables that typically balloon (history*, trends*, events).
+/// pg_total_relation_size includes indexes and TOAST.
 const Q_TABLE_SIZES: &str = "
 SELECT
     n.nspname || '.' || c.relname AS name,
@@ -159,12 +160,12 @@ const Q_VERSION: &str = "SHOW server_version";
 
 // ---------- persistent connection ----------
 
-/// Долгоживущий PG-коннект. Открывается один раз, используется на много
-/// poll-ов. При любой ошибке запроса вызывающая сторона дропнет PgConnection
-/// и откроет заново — это дёшево (~3-5 ms на localhost), но избавляет от
-/// connect-disconnect на каждый тик в нормальном режиме.
+/// Long-lived PG connection. Opened once and reused across many polls. On any
+/// query error the caller drops PgConnection and reconnects — this is cheap
+/// (~3-5 ms on localhost) but eliminates connect/disconnect overhead on every
+/// tick during normal operation.
 ///
-/// Drop явно abort-ит фоновую задачу — нет утечек tasks.
+/// Drop explicitly aborts the background task — no task leaks.
 pub struct PgConnection {
     client: Client,
     task: JoinHandle<()>,
@@ -172,10 +173,10 @@ pub struct PgConnection {
 
 impl PgConnection {
     pub async fn connect(target: &DbTarget) -> Result<Self> {
-        // v0.4d: всегда подключаем TLS-коннектор. Если URL содержит
-        // sslmode=disable, tokio-postgres даже не дёргает connector —
-        // обычный TCP без TLS, накладных расходов нет. Если sslmode=
-        // require/prefer, TLS-handshake через native-tls (openssl/schannel).
+        // v0.4d: we always attach a TLS connector. If the URL contains
+        // sslmode=disable, tokio-postgres never calls the connector —
+        // plain TCP without TLS, no overhead. If sslmode=require/prefer,
+        // TLS handshake goes through native-tls (openssl/schannel).
         let mut builder = NativeTlsConnector::builder();
         if target.insecure_tls {
             builder.danger_accept_invalid_certs(true);
@@ -203,21 +204,21 @@ impl PgConnection {
 
 impl Drop for PgConnection {
     fn drop(&mut self) {
-        // Без abort() задача висит, пока сам Client (внутри self) не дропнется
-        // и не сигнализирует Connection future-у завершиться. abort() гарантирует
-        // немедленный конец, не зависит от внутренней механики tokio-postgres.
+        // Without abort() the task lingers until the Client (inside self) is dropped
+        // and signals the Connection future to finish. abort() guarantees an
+        // immediate end, independent of tokio-postgres internals.
         self.task.abort();
     }
 }
 
 // ---------- MySQL connection (v0.4c) ----------
 
-/// MySQL/MariaDB-коннект на mysql_async. Отличается от PG двумя вещами:
-/// 1. `fetch_stats(&mut self)` — mysql_async требует mutable borrow.
-/// 2. Все запросы — try-or-default: если конкретная view/таблица не
-///    существует на этой версии (INNODB_LOCK_WAITS, replica status), мы
-///    просто оставляем поле дефолтным. Это даёт совместимость с MariaDB,
-///    MySQL 5.7, MySQL 8.0+ без условной компиляции.
+/// MySQL/MariaDB connection via mysql_async. Differs from PG in two ways:
+/// 1. `fetch_stats(&mut self)` — mysql_async requires a mutable borrow.
+/// 2. All queries are try-or-default: if a specific view/table does not
+///    exist in this version (INNODB_LOCK_WAITS, replica status), we simply
+///    leave the field at its default. This provides compatibility with MariaDB,
+///    MySQL 5.7, and MySQL 8.0+ without conditional compilation.
 pub struct MyConnection {
     conn: mysql_async::Conn,
 }
@@ -243,7 +244,7 @@ impl MyConnection {
             }
         }
 
-        // connections by command+state → агрегируем в наши категории
+        // connections by command+state → aggregate into our categories
         if let Ok(rows) = self
             .conn
             .query::<(String, String, i64), _>(
@@ -269,9 +270,9 @@ impl MyConnection {
             }
         }
 
-        // top long-running queries (v0.4c.1: с JOIN-ом на performance_schema
-        // вытаскиваем настоящий wait_event). Если performance_schema выключен
-        // или нет прав — fallback на простую PROCESSLIST без wait_event.
+        // top long-running queries (v0.4c.1: with a JOIN on performance_schema
+        // we retrieve the actual wait_event). If performance_schema is disabled
+        // or permissions are missing — fall back to simple PROCESSLIST without wait_event.
         let top_q_with_perf = "
             SELECT pl.ID, pl.USER, pl.COMMAND, COALESCE(pl.STATE,''),
                    pl.TIME, pl.INFO, COALESCE(ew.EVENT_NAME,'')
@@ -298,7 +299,7 @@ impl MyConnection {
                     pid: id as i32,
                     usename: user,
                     state: if state.is_empty() { cmd } else { state.clone() },
-                    // Приоритет: настоящий event из perf_schema, иначе «Waiting…» из state.
+                    // Priority: actual event from perf_schema, otherwise "Waiting…" from state.
                     wait_event: if !wait_event.is_empty() {
                         Some(wait_event)
                     } else if state.to_lowercase().contains("waiting") {
@@ -357,9 +358,9 @@ impl MyConnection {
             }
         }
 
-        // idle-in-transaction (v0.4c.1): в MySQL такое состояние нельзя
-        // увидеть через PROCESSLIST (там COMMAND=Sleep), но innodb_trx
-        // показывает открытые транзакции без активного запроса.
+        // idle-in-transaction (v0.4c.1): in MySQL this state is not visible
+        // through PROCESSLIST (COMMAND=Sleep there), but innodb_trx shows
+        // open transactions with no active query.
         if let Ok(rows) = self
             .conn
             .query::<(u64, i64), _>(
@@ -373,13 +374,13 @@ impl MyConnection {
         {
             let idle_in_tx = rows.len() as u32;
             stats.connections.idle_in_transaction = idle_in_tx;
-            // PROCESSLIST показывает эти коннекты как COMMAND=Sleep, значит
-            // они уже в idle. Вычитаем, чтобы не дублировать в счётчиках.
+            // PROCESSLIST shows these connections as COMMAND=Sleep, so they are
+            // already counted in idle. Subtract to avoid double-counting.
             stats.connections.idle =
                 stats.connections.idle.saturating_sub(idle_in_tx);
 
-            // Зомби >= 60s → синтезируем LongQuery, чтобы алерт-правило
-            // rule_idle_in_tx_zombie сработало (оно ищет state="idle in transaction").
+            // Zombies >= 60s → synthesize a LongQuery so the alert rule
+            // rule_idle_in_tx_zombie fires (it looks for state="idle in transaction").
             for (pid, age) in rows {
                 if age >= 60 {
                     stats.top_queries.push(LongQuery {
@@ -392,7 +393,7 @@ impl MyConnection {
                     });
                 }
             }
-            // После добавления зомби пересортируем по возрасту и обрежем до 10.
+            // After adding zombies, re-sort by age and truncate to 10.
             stats.top_queries.sort_by(|a, b| {
                 b.age_sec
                     .partial_cmp(&a.age_sec)
@@ -445,8 +446,8 @@ impl MyConnection {
 
 // ---------- backend router ----------
 
-/// Универсальный handle над любым backend-ом. Выбор делается один раз при
-/// connect по URL scheme. Хранится в spawn_db как `Option<DbBackend>`.
+/// Universal handle over any backend. The choice is made once at connect time
+/// based on the URL scheme. Stored in spawn_db as `Option<DbBackend>`.
 pub enum DbBackend {
     Postgres(PgConnection),
     Mysql(MyConnection),
@@ -460,7 +461,7 @@ impl DbBackend {
         } else if url.starts_with("postgres://") || url.starts_with("postgresql://") {
             Ok(Self::Postgres(PgConnection::connect(target).await?))
         } else {
-            // Без явной схемы пробуем PG (libpq key=value тоже сюда).
+            // No explicit scheme — try PG (libpq key=value format also falls here).
             Ok(Self::Postgres(PgConnection::connect(target).await?))
         }
     }
@@ -485,7 +486,7 @@ impl DbBackend {
 async fn run_all_queries(client: &Client, deadline: Duration) -> Result<DbStats> {
     let mut stats = DbStats::default();
 
-    // Версия — для шапки таба.
+    // Version — for the tab header.
     if let Ok(rows) = timeout(deadline, client.simple_query(Q_VERSION)).await? {
         for msg in rows {
             if let tokio_postgres::SimpleQueryMessage::Row(r) = msg {
@@ -497,7 +498,7 @@ async fn run_all_queries(client: &Client, deadline: Duration) -> Result<DbStats>
         }
     }
 
-    // Соединения по состояниям.
+    // Connections by state.
     let rows = timeout(deadline, client.query(Q_CONNECTIONS, &[]))
         .await
         .context("db connections query timeout")??;
@@ -520,7 +521,7 @@ async fn run_all_queries(client: &Client, deadline: Duration) -> Result<DbStats>
         }
     }
 
-    // Топ запросов.
+    // Top queries.
     let rows = timeout(deadline, client.query(Q_TOP_QUERIES, &[]))
         .await
         .context("db top queries query timeout")??;
@@ -545,7 +546,7 @@ async fn run_all_queries(client: &Client, deadline: Duration) -> Result<DbStats>
         stats.locks_waiting = n as u32;
     }
 
-    // Размеры zabbix-таблиц.
+    // Zabbix table sizes.
     let rows = timeout(deadline, client.query(Q_TABLE_SIZES, &[]))
         .await
         .context("db table sizes query timeout")??;
@@ -558,7 +559,7 @@ async fn run_all_queries(client: &Client, deadline: Duration) -> Result<DbStats>
         })
         .collect();
 
-    // Replication lag (если replica).
+    // Replication lag (if replica).
     let rows = timeout(deadline, client.query(Q_REPLICATION_LAG, &[]))
         .await
         .context("db replication lag query timeout")??;
@@ -587,8 +588,8 @@ mod tests {
 
     #[test]
     fn query_strings_compile() {
-        // Простая sanity-проверка: ни один запрос не пустой и заканчивается
-        // без trailing semicolon (tokio-postgres не требует).
+        // Simple sanity check: no query is empty and none ends with a
+        // trailing semicolon (tokio-postgres does not require one).
         for q in [
             Q_CONNECTIONS,
             Q_TOP_QUERIES,

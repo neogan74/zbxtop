@@ -1,8 +1,8 @@
 #!/bin/bash
-# entrypoint.sh — sshd в фоне + оригинальный zabbix-entrypoint на foreground.
+# entrypoint.sh — sshd in the background + original zabbix entrypoint in the foreground.
 #
-# Если /etc/ztop-ssh-keys/id_ed25519.pub смонтирован — подкладываем его в
-# authorized_keys пользователя ztop. setup.sh из docker/ генерирует этот ключ.
+# If /etc/ztop-ssh-keys/id_ed25519.pub is mounted, it is placed into
+# authorized_keys for the ztop user. setup.sh in docker/ generates this key.
 
 set -e
 
@@ -14,19 +14,19 @@ else
     echo "[entrypoint] WARNING: ssh-keys/id_ed25519.pub not mounted, ssh login disabled"
 fi
 
-# Гарантируем, что host keys существуют (на первом старте sshd сам их создаёт,
-# но иногда официальный image без них — генерируем явно).
+# Ensure host keys exist (sshd creates them on first start, but sometimes
+# the official image ships without them — generate explicitly).
 ssh-keygen -A >/dev/null 2>&1 || true
 
-# sshd в фоне
+# sshd in the background
 /usr/sbin/sshd -D &
 SSHD_PID=$!
 echo "[entrypoint] sshd started (pid=$SSHD_PID)"
 
-# Грейсфул-shutdown: пробрасываем SIGTERM в zabbix_server (sshd погаснет вместе с контейнером).
+# Graceful shutdown: forward SIGTERM to zabbix_server (sshd will die with the container).
 trap 'echo "[entrypoint] stopping..."; kill -TERM $ZBX_PID 2>/dev/null; wait $ZBX_PID' SIGTERM SIGINT
 
-# Запускаем оригинальный docker-entrypoint.sh от zabbix-server-pgsql.
+# Start the original docker-entrypoint.sh from zabbix-server-pgsql.
 /usr/bin/docker-entrypoint.sh /usr/sbin/zabbix_server --foreground &
 ZBX_PID=$!
 echo "[entrypoint] zabbix_server started (pid=$ZBX_PID)"

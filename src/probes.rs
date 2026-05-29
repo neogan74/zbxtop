@@ -1,15 +1,15 @@
-//! v0.7 — синтетические пробы (TCP / DNS / PG-SELECT 1).
+//! v0.7 — synthetic probes (TCP / DNS / PG-SELECT 1).
 //!
-//! Идея: с машины, где запущен ztop, периодически кидаем дешёвые проверки
-//! в сеть, БД, DNS. Это позволяет отличить «болеет сам Zabbix-сервер» от
-//! «у меня проблемы с сетью с этой машины». Пробы — глобальные (не
-//! привязаны к focused host), потому что они меряют сеть из ztop, а не
-//! от удалённого хоста.
+//! Idea: from the machine running ztop, we periodically fire cheap checks
+//! against the network, DB, and DNS. This makes it possible to distinguish
+//! "the Zabbix server itself is sick" from "I have network problems from this
+//! machine". Probes are global (not tied to the focused host) because they
+//! measure the network from ztop, not from the remote host.
 //!
-//! Конфиг: блоки `[[probe]]` в том же `hosts.toml`. Опциональные —
-//! ztop работает и без проб (`probes` секция пустая).
+//! Config: `[[probe]]` blocks in the same `hosts.toml`. Optional —
+//! ztop works without probes (the `probes` section is empty).
 //!
-//! Пробы — opt-in. Никакого автоматического сканирования или обнаружения.
+//! Probes are opt-in. No automatic scanning or discovery.
 
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
@@ -25,16 +25,16 @@ pub struct ProbeConfig {
     pub name: String,
     /// "tcp" | "dns" | "pg" — discriminator.
     pub kind: String,
-    /// Для "tcp"/"tls": `host:port`. Для "dns": hostname.
+    /// For "tcp"/"tls": `host:port`. For "dns": hostname.
     #[serde(default)]
     pub target: Option<String>,
-    /// Для "pg"/"mysql": connection URL.
+    /// For "pg"/"mysql": connection URL.
     #[serde(default)]
     pub url: Option<String>,
-    /// Интервал между запусками, секунды (default 5).
+    /// Interval between runs, in seconds (default 5).
     #[serde(default = "default_interval")]
     pub interval: u64,
-    /// Per-attempt таймаут, секунды (default 5).
+    /// Per-attempt timeout, in seconds (default 5).
     #[serde(default = "default_timeout")]
     pub timeout: u64,
 }
@@ -56,8 +56,8 @@ impl ProbeConfig {
     }
 }
 
-/// Замаскировать пароль в URL для безопасного отображения в UI: после
-/// `://user:` всё до `@` заменяется на `****`.
+/// Mask the password in a URL for safe display in the UI: after
+/// `://user:` everything up to `@` is replaced with `****`.
 fn sanitize_url(u: &str) -> String {
     if let Some(idx) = u.find("://") {
         let (scheme, rest) = u.split_at(idx + 3);
@@ -84,7 +84,7 @@ pub struct ProbeState {
     pub last_latency: Option<Duration>,
     pub last_error: Option<String>,
     pub consecutive_errors: u32,
-    /// Скользящее количество запусков и удачных.
+    /// Rolling count of total runs and successful runs.
     pub total_runs: u64,
     pub total_ok: u64,
 }
@@ -142,7 +142,7 @@ async fn run_probe_loop(idx: usize, cfg: ProbeConfig, tx: mpsc::Sender<ProbeMsg>
             .await
             .is_err()
         {
-            break; // receiver gone — выходим
+            break; // receiver gone — exit
         }
         tokio::time::sleep(interval).await;
     }
@@ -174,7 +174,7 @@ async fn run_dns(target: Option<&str>, deadline: Duration) -> Result<Duration> {
     let q = if target.contains(':') {
         target.to_string()
     } else {
-        // lookup_host требует host:port — добавляем фиктивный 0.
+        // lookup_host requires host:port — append a dummy port 0.
         format!("{target}:0")
     };
     let start = Instant::now();

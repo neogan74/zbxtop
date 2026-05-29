@@ -1,19 +1,19 @@
 #!/bin/bash
-# stress_trapper.sh — массовая отправка values в trapper.
+# stress_trapper.sh — mass value submission to the trapper.
 #
-# Использует zabbix_sender внутри контейнера zabbix-agent. Items не обязаны
-# существовать — даже rejected values нагружают trapper-процессы (видно в
-# таб «4 Internals» как busy trapper и в «1 Processes» как busy proctitle).
+# Uses zabbix_sender inside the zabbix-agent container. Items do not have to
+# exist — even rejected values load the trapper processes (visible in
+# tab "4 Internals" as busy trapper and in "1 Processes" as busy proctitle).
 #
-# Что должно произойти в ztop:
-#   - busy% у trapper в Internals растёт
-#   - vps растёт
-#   - возможно сработает rule_busy_cpu_delta если busy(zbx) > busy(ps)
+# What should happen in ztop:
+#   - busy% for trapper in Internals grows
+#   - vps grows
+#   - rule_busy_cpu_delta may fire if busy(zbx) > busy(ps)
 #
-# Использование:
+# Usage:
 #   ./stress_trapper.sh [VALUES_PER_BATCH] [DURATION_SEC]
 #
-# Дефолт: 500 values, 60 сек.
+# Default: 500 values, 60 sec.
 
 set -e
 VPB=${1:-500}

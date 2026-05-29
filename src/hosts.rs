@@ -1,13 +1,13 @@
-//! v0.5a — конфигурация мульти-хостового режима.
+//! v0.5a — multi-host mode configuration.
 //!
-//! Поддерживаются два способа задания списка хостов:
-//! 1. **Config-файл** `~/.config/ztop/hosts.toml` (или путь из `--config`).
-//! 2. **Single-host через CLI** (`--host` + остальные флаги) — для обратной
-//!    совместимости и быстрых запусков на одну машину.
+//! Two ways to specify the host list are supported:
+//! 1. **Config file** `~/.config/ztop/hosts.toml` (or path from `--config`).
+//! 2. **Single-host via CLI** (`--host` + other flags) — for backward
+//!    compatibility and quick single-machine runs.
 //!
-//! Конфиг-файл выигрывает: если он есть и доступен — используется он, CLI
-//! single-host флаги игнорируются (с предупреждением). Если конфига нет —
-//! строим список из одного хоста по CLI.
+//! The config file takes priority: if it exists and is accessible, it is used
+//! and CLI single-host flags are ignored (with a warning). If there is no
+//! config file, the host list is built from CLI arguments.
 
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
@@ -17,30 +17,30 @@ use std::path::{Path, PathBuf};
 pub struct HostsConfig {
     #[serde(rename = "host", default)]
     pub hosts: Vec<HostConfig>,
-    /// v0.7: глобальные пробы (TCP/DNS/PG). Опциональные — могут быть пустыми.
+    /// v0.7: global probes (TCP/DNS/PG). Optional — may be empty.
     #[serde(rename = "probe", default)]
     pub probes: Vec<crate::probes::ProbeConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct HostConfig {
-    /// Имя для отображения в UI (может быть произвольным, не SSH-хостнейм).
+    /// Display name in the UI (arbitrary, does not have to match the SSH hostname).
     pub name: String,
-    /// SSH-таргет (alias из ~/.ssh/config либо user@host).
+    /// SSH target (alias from ~/.ssh/config or user@host).
     pub ssh: String,
     #[serde(default = "default_log_path")]
     pub log: String,
     #[serde(default)]
     pub sudo: bool,
-    /// Опциональный override хоста для zabbix.stats (по умолчанию — отрезаем
-    /// user@ из ssh-таргета).
+    /// Optional host override for zabbix.stats (defaults to stripping
+    /// user@ from the ssh target).
     #[serde(default)]
     pub stats_host: Option<String>,
     #[serde(default = "default_stats_port")]
     pub stats_port: u16,
     #[serde(default)]
     pub no_stats: bool,
-    /// DB connection URL. Если не задан — DB-источник для этого хоста выключен.
+    /// DB connection URL. If not set, the DB source for this host is disabled.
     #[serde(default)]
     pub db_url: Option<String>,
     #[serde(default)]
@@ -56,7 +56,7 @@ fn default_stats_port() -> u16 {
 }
 
 impl HostsConfig {
-    /// Загрузить из произвольного пути.
+    /// Load from an arbitrary path.
     pub fn load_from(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("read config: {}", path.display()))?;
@@ -71,7 +71,7 @@ impl HostsConfig {
         Ok(cfg)
     }
 
-    /// Дефолтный путь: `~/.config/ztop/hosts.toml`.
+    /// Default path: `~/.config/ztop/hosts.toml`.
     pub fn default_path() -> Option<PathBuf> {
         dirs::config_dir().map(|d| d.join("ztop").join("hosts.toml"))
     }

@@ -1,9 +1,9 @@
-//! Per-collector задачи с независимым опросом, backoff и общим force-refresh.
+//! Per-collector tasks with independent polling, backoff, and a shared force-refresh.
 //!
-//! - Procs/Sys: периодический pull через `ssh ... 'cmd'` (tokio::process).
-//! - Logs (v0.2b): long-lived ssh-процесс `tail -n N -F`, построчный стрим в
-//!   mpsc-канал. Reconnect с экспоненциальным backoff. Так получаем real-time
-//!   логи без поллинга — критично в момент инцидента.
+//! - Procs/Sys: periodic pull via `ssh ... 'cmd'` (tokio::process).
+//! - Logs (v0.2b): long-lived ssh process `tail -n N -F`, line-by-line stream into
+//!   an mpsc channel. Reconnect with exponential backoff. This gives real-time
+//!   logs without polling — critical during an incident.
 
 use crate::collectors::{classify, fetch_procs, fetch_sys, LogLine, SysStats, ZbxProc};
 use crate::db::{DbBackend, DbStats, DbTarget};
@@ -40,10 +40,10 @@ impl SourceKind {
     }
 }
 
-/// Состояние одного источника данных (обновляется при получении CollectorMsg).
-/// Для periodic-источников (Procs/Sys) — стандартная семантика: last_ok = время
-/// последнего успешного запроса. Для streaming-источника Logs — last_ok = время
-/// последней полученной строки лога (или подключения, если строк ещё не было).
+/// State of one data source (updated on receiving a CollectorMsg).
+/// For periodic sources (Procs/Sys) — standard semantics: last_ok = time of
+/// the last successful request. For the streaming Logs source — last_ok = time
+/// of the last received log line (or connection time if no lines yet).
 #[derive(Clone, Debug, Default)]
 pub struct SourceState {
     pub last_ok: Option<Instant>,
@@ -65,18 +65,18 @@ impl SourceState {
     }
 }
 
-/// Состояние лог-стрима — отдельная структура, потому что у стрима другая
-/// семантика (не периодический запрос, а живой подпроцесс).
+/// Log stream state — a separate struct because the stream has different
+/// semantics (not a periodic request but a live subprocess).
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct LogStreamStatus {
-    /// True, пока ssh-подпроцесс жив и читается stdout.
+    /// True while the ssh subprocess is alive and stdout is being read.
     pub connected: bool,
-    /// Сколько раз перезапускали стрим с начала сессии.
+    /// How many times the stream has been restarted since the session began.
     pub reconnects: u32,
     pub last_error: Option<String>,
 }
 
-/// Сообщение из коллектора в event-loop.
+/// Message from a collector to the event loop.
 pub enum CollectorMsg {
     Procs {
         result: Result<Vec<ZbxProc>>,
@@ -86,23 +86,23 @@ pub enum CollectorMsg {
         result: Result<SysStats>,
         took: Duration,
     },
-    /// Одна строка из streaming-лога.
+    /// One line from the streaming log.
     LogStreamLine(LogLine),
-    /// Изменение статуса стрима (connect/disconnect/error).
+    /// Stream status change (connect/disconnect/error).
     LogStreamStatus(LogStreamStatus),
-    /// Снапшот zabbix.stats через trapper-порт.
+    /// Snapshot of zabbix.stats via the trapper port.
     Stats {
         result: Result<ZabbixStats>,
         took: Duration,
     },
-    /// Снапшот DB-метрик (PostgreSQL).
+    /// Snapshot of DB metrics (PostgreSQL).
     Db {
         result: Result<DbStats>,
         took: Duration,
     },
-    /// v0.6.1: синтетический сигнал — сбросить весь HostState на дефолт.
-    /// Используется replay-loop-ом для backward-seek (rewind), чтобы после
-    /// прыжка назад экран не показывал «будущие» данные.
+    /// v0.6.1: synthetic signal — reset all HostState to default.
+    /// Used by the replay loop for backward-seek (rewind) so that after
+    /// jumping backward the screen does not show "future" data.
     Reset,
 }
 
@@ -114,23 +114,23 @@ impl CollectorMsg {
             Self::LogStreamLine(_) | Self::LogStreamStatus(_) => SourceKind::Logs,
             Self::Stats { .. } => SourceKind::Stats,
             Self::Db { .. } => SourceKind::Db,
-            // Reset не относится к конкретному источнику; возвращаем Procs
-            // как наименее значимый — apply_msg обрабатывает Reset до того,
-            // как вообще трогает sources HashMap.
+            // Reset does not belong to a specific source; we return Procs
+            // as the least significant — apply_msg handles Reset before it
+            // even touches the sources HashMap.
             Self::Reset => SourceKind::Procs,
         }
     }
 }
 
-/// v0.5a — обёртка сообщений для маршрутизации в нужный `HostState`.
+/// v0.5a — message wrapper for routing to the correct `HostState`.
 pub struct HostMsg {
     pub host_idx: usize,
     pub msg: CollectorMsg,
 }
 
 pub struct CollectorHandles {
-    /// Глобальный force-refresh. На v0.5a один Notify на все хосты —
-    /// `r` пробуждает collectors всех хостов одновременно.
+    /// Global force-refresh. In v0.5a one Notify for all hosts —
+    /// `r` wakes collectors for all hosts simultaneously.
     pub refresh: Arc<Notify>,
     pub log_reconnect: Arc<Notify>,
     handles: Vec<JoinHandle<()>>,
@@ -144,7 +144,7 @@ impl CollectorHandles {
     }
 }
 
-/// Параметры запуска коллекторов для одного хоста.
+/// Startup parameters for the collectors of one host.
 pub struct HostSpawn {
     pub host_idx: usize,
     pub ssh: SshTarget,

@@ -1,21 +1,21 @@
-//! v0.6 — запись и воспроизведение телеметрии для постмортема.
+//! v0.6 — telemetry recording and replay for post-mortem analysis.
 //!
-//! Формат: JSON Lines. Первая строка — `HeaderLine` с метаданными хостов
-//! (имя, ssh, log_path) и версией протокола. Каждая последующая строка —
-//! `EventLine` с timestamp-ом, host_idx и сериализованным сообщением.
+//! Format: JSON Lines. The first line is a `HeaderLine` with host metadata
+//! (name, ssh, log_path) and the protocol version. Each subsequent line is an
+//! `EventLine` with a timestamp, host_idx, and a serialised message.
 //!
-//! Запись (`--record path`): после каждого `HostMsg` event-loop вызывает
-//! `Recorder::write`, JSON-строка кладётся в BufWriter. Файл закрывается
-//! на graceful shutdown через Drop.
+//! Recording (`--record path`): after each `HostMsg` the event loop calls
+//! `Recorder::write` and a JSON line is placed into a BufWriter. The file is
+//! closed on graceful shutdown via Drop.
 //!
-//! Воспроизведение (`--replay path`): отдельная задача читает JSONL,
-//! шлёт `HostMsg` в тот же mpsc-канал, который обычно использует
-//! `spawn_collectors`. Между событиями делает sleep до оригинального
-//! timestamp-а — UI выглядит как при «живом» прогоне.
+//! Replay (`--replay path`): a separate task reads the JSONL and sends
+//! `HostMsg` to the same mpsc channel normally used by `spawn_collectors`.
+//! Between events it sleeps until the original timestamp — the UI looks just
+//! like a live run.
 //!
-//! Особо ценно вместе с **diagnose** (v0.4b): replay инцидента сразу
-//! показывает, какие диагнозы загорелись и когда. Постмортем превращается
-//! из чтения логов в «промотать вперёд и посмотреть».
+//! Especially valuable together with **diagnose** (v0.4b): replaying an
+//! incident immediately shows which diagnoses fired and when. A post-mortem
+//! becomes "fast-forward and watch" rather than reading logs.
 
 use crate::collectors::{LogLine, SysStats, ZbxProc};
 use crate::db::DbStats;
@@ -69,8 +69,8 @@ pub struct EventLine {
 
 // ---------- serializable mirror of CollectorMsg ----------
 //
-// CollectorMsg несёт `Result<T, anyhow::Error>` — Error не сериализуется.
-// Здесь все Err преобразованы в String (через `format!("{e:#}")`).
+// CollectorMsg carries `Result<T, anyhow::Error>` — Error is not serialisable.
+// Here all Err variants are converted to String (via `format!("{e:#}")`).
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -128,8 +128,8 @@ impl RecordedMsg {
             },
             CollectorMsg::LogStreamLine(l) => Self::LogStreamLine(l.clone()),
             CollectorMsg::LogStreamStatus(s) => Self::LogStreamStatus(s.clone()),
-            // Reset не записываем — это синтетический сигнал, существует
-            // только in-memory между replay-loop и event-loop.
+            // Reset is not recorded — it is a synthetic signal that exists
+            // only in-memory between the replay loop and the event loop.
             CollectorMsg::Reset => Self::LogStreamStatus(crate::source::LogStreamStatus::default()),
         }
     }
@@ -162,7 +162,7 @@ impl RecordedMsg {
 
 pub struct Recorder {
     writer: BufWriter<File>,
-    /// Сколько событий записано (для UI-индикатора).
+    /// How many events have been written (for the UI indicator).
     pub events_written: u64,
 }
 
@@ -197,12 +197,12 @@ impl Recorder {
             host_idx: host_msg.host_idx,
             msg: RecordedMsg::from_collector(&host_msg.msg),
         });
-        // Игнорируем ошибки записи: если файл недоступен, нет смысла валить UI.
-        // В будущем — toast «recording paused: <err>».
+        // Ignore write errors: if the file is unavailable, there is no point
+        // crashing the UI. Future work: toast "recording paused: <err>".
         if serde_json::to_writer(&mut self.writer, &line).is_ok() {
             let _ = self.writer.write_all(b"\n");
             self.events_written = self.events_written.saturating_add(1);
-            // Не flush — BufWriter сам сбросит при закрытии или переполнении.
+            // No flush — BufWriter will flush on close or when the buffer is full.
         }
     }
 }
@@ -215,7 +215,7 @@ impl Drop for Recorder {
 
 // ---------- Replay ----------
 
-/// Прочитать только header — для построения списка хостов до старта event-loop.
+/// Read only the header — used to build the host list before starting the event loop.
 pub fn read_header(path: &Path) -> Result<HeaderLine> {
     let file = File::open(path)
         .with_context(|| format!("open replay file {}", path.display()))?;
@@ -242,23 +242,23 @@ pub fn read_header(path: &Path) -> Result<HeaderLine> {
     }
 }
 
-/// v0.6.1 — команды управления replay-сессией.
+/// v0.6.1 — replay session control commands.
 #[derive(Debug, Clone, Copy)]
 pub enum ReplayCmd {
     TogglePause,
-    /// Шаг — один event вперёд (имеет смысл только в paused-состоянии).
+    /// Step — one event forward (meaningful only when paused).
     Step,
-    /// Прыжок вперёд на заданный интервал. Не сбрасывает state — старые
-    /// данные остаются, новые приходят с нового cursor-а.
+    /// Jump forward by the given interval. Does not reset state — old
+    /// data remains, new data arrives from the new cursor position.
     SeekForward(Duration),
-    /// Прыжок назад. **Сбрасывает HostState всех хостов** (через `Reset`),
-    /// иначе UI показывал бы данные из будущего относительно курсора.
+    /// Jump backward. **Resets HostState for all hosts** (via `Reset`),
+    /// otherwise the UI would show data from the future relative to the cursor.
     SeekBackward(Duration),
 }
 
-/// Загрузить всю запись в память: header + Vec<EventLine>. Для часовой
-/// записи ~3 хоста ≈ 50-200 MB; для постмортем-инструмента приемлемо.
-/// Lazy-streaming (как было в v0.6) даёт seek-only-forward, что бесполезно.
+/// Load the entire recording into memory: header + Vec<EventLine>. For a
+/// one-hour recording with ~3 hosts ≈ 50-200 MB; acceptable for a post-mortem tool.
+/// Lazy-streaming (as in v0.6) only allows forward seeking, which is not useful.
 pub fn load_recording(path: &Path) -> Result<(HeaderLine, Vec<EventLine>)> {
     let file = File::open(path)
         .with_context(|| format!("open replay file {}", path.display()))?;
@@ -286,8 +286,8 @@ pub fn load_recording(path: &Path) -> Result<(HeaderLine, Vec<EventLine>)> {
     Ok((header, events))
 }
 
-/// Replay-loop с поддержкой команд (pause/step/seek) и индикатором прогресса.
-/// Прогресс публикуется в `progress` (0..=1000, для 0.1% точности).
+/// Replay loop with support for commands (pause/step/seek) and a progress indicator.
+/// Progress is published to `progress` (0..=1000, for 0.1% precision).
 pub async fn replay_loop(
     events: Vec<EventLine>,
     tx: mpsc::Sender<HostMsg>,
@@ -328,16 +328,16 @@ pub async fn replay_loop(
                 match cmd {
                     ReplayCmd::TogglePause => {
                         paused = !paused;
-                        // При unpause «переякориваемся» от текущего момента,
-                        // чтобы не догонять накопившийся sleep.
+                        // On unpause we re-anchor from the current moment
+                        // to avoid catching up on accumulated sleep.
                         if !paused {
                             anchor_real = Instant::now();
                             anchor_replay = events[cursor].ts;
                         }
                     }
                     ReplayCmd::Step => {
-                        // Шаг работает в любом состоянии, но особенно нужен
-                        // в paused — продвигает на один event с немедленной отправкой.
+                        // Step works in any state but is most useful when paused —
+                        // advances by one event with immediate delivery.
                         let event = events[cursor].clone();
                         let _ = tx
                             .send(HostMsg {
@@ -364,8 +364,8 @@ pub async fn replay_loop(
                             - chrono::Duration::from_std(d).unwrap_or_default();
                         let new_cursor = events.partition_point(|e| e.ts < target_ts);
 
-                        // Reset для каждого хоста, что был в событиях до new_cursor.
-                        // Иначе UI показывает данные из «будущего» относительно курсора.
+                        // Reset for every host that had events before new_cursor.
+                        // Otherwise the UI shows data from the "future" relative to the cursor.
                         let host_idxs: HashSet<usize> = events
                             .iter()
                             .take(new_cursor.max(cursor))

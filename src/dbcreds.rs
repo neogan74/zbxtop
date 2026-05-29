@@ -1,12 +1,12 @@
-//! v0.4d.1 — обогащение DB-URL паролем из libpq-совместимых файлов.
+//! v0.4d.1 — enrich a DB URL with a password from libpq-compatible files.
 //!
-//! Идея: если в `--db-url` пароль не указан, пытаемся достать его из
-//! стандартных мест: `~/.pgpass` для PG, `[client]` секции `~/.my.cnf`
-//! для MySQL. Это библиотечное поведение — у PG то же самое делает libpq,
-//! у MySQL — клиент `mysql` CLI.
+//! Idea: if `--db-url` does not contain a password, we try to retrieve it
+//! from standard locations: `~/.pgpass` for PG, the `[client]` section of
+//! `~/.my.cnf` for MySQL. This mirrors library behaviour — libpq does the
+//! same for PG, and the `mysql` CLI does it for MySQL.
 //!
-//! Если файл не существует, права слишком широкие, или нет матча — URL
-//! возвращается как есть. Дальше уже сервер скажет про auth error.
+//! If the file does not exist, permissions are too open, or there is no match —
+//! the URL is returned as-is. The server will then report an auth error.
 
 use std::collections::HashMap;
 use std::env;
@@ -33,7 +33,7 @@ fn enrich(url: &str, backend: Backend) -> String {
         return url.to_string();
     };
     if parsed.password.is_some() {
-        return url.to_string(); // пароль уже в URL — ничего не делаем
+        return url.to_string(); // password already in URL — nothing to do
     }
     let lookup = match backend {
         Backend::Postgres => read_pgpass_for(
@@ -62,7 +62,7 @@ struct ParsedUrl {
     host: String,
     port: Option<u16>,
     database: String,
-    /// Часть после "?" если есть.
+    /// Part after "?" if present.
     query: Option<String>,
 }
 
@@ -98,7 +98,7 @@ impl ParsedUrl {
 
 fn parse_db_url(url: &str) -> Option<ParsedUrl> {
     let (scheme, rest) = url.split_once("://")?;
-    // Делим на authority и path?query: ищем первый '/' или '?'.
+    // Split into authority and path?query: find the first '/' or '?'.
     let (authority, tail) = match rest.find(|c| c == '/' || c == '?') {
         Some(i) => (&rest[..i], &rest[i..]),
         None => (rest, ""),
@@ -114,8 +114,8 @@ fn parse_db_url(url: &str) -> Option<ParsedUrl> {
         },
         None => (String::new(), None),
     };
-    // host может быть в [::1]-форме (IPv6) — но для прод-инфры zabbix-серверов
-    // это редко; в MVP не поддерживаем. Простой rsplit_once(':').
+    // host may be in [::1] form (IPv6) — but for production Zabbix infrastructure
+    // this is rare; not supported in MVP. Simple rsplit_once(':').
     let (host, port) = if hostport.starts_with('[') {
         // IPv6 в квадратных скобках: [::1]:5432
         if let Some(end) = hostport.find(']') {
@@ -151,7 +151,7 @@ fn parse_db_url(url: &str) -> Option<ParsedUrl> {
     })
 }
 
-// Минимальный URL percent decode/encode для userinfo (пароль).
+// Minimal URL percent decode/encode for userinfo (password).
 fn pct_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(s.len());
     let bytes = s.as_bytes();
@@ -201,7 +201,7 @@ fn pgpass_mode_safe(path: &Path) -> bool {
     match std::fs::metadata(path) {
         Ok(m) => {
             let mode = m.mode() & 0o777;
-            // libpq требует не более 0600. 0400 тоже принимаем — read-only.
+            // libpq requires no more than 0600. 0400 is also accepted — read-only.
             mode == 0o600 || mode == 0o400
         }
         Err(_) => false,
@@ -239,7 +239,7 @@ fn read_pgpass_for(host: &str, port: u16, database: &str, user: &str) -> Option<
     None
 }
 
-/// Разбить строку pgpass на 5 полей. Учитываем backslash-escape: `\:` и `\\`.
+/// Split a pgpass line into 5 fields. Handles backslash escapes: `\:` and `\\`.
 fn split_pgpass_line(line: &str) -> Vec<String> {
     let mut out = Vec::with_capacity(5);
     let mut cur = String::new();
@@ -269,16 +269,16 @@ fn my_cnf_path() -> Option<PathBuf> {
     Some(PathBuf::from(home).join(".my.cnf"))
 }
 
-/// Парсим только `[client]` секцию. Возвращаем пароль если есть.
-/// Также сверяем user если он задан в my.cnf — если не совпадает с URL,
-/// игнорируем (более безопасно).
+/// Parse only the `[client]` section. Return the password if found.
+/// Also compare user if specified in my.cnf — if it does not match the URL
+/// user, ignore it (safer behaviour).
 fn read_my_cnf_password(url_user: &str) -> Option<String> {
     let path = my_cnf_path()?;
     let content = std::fs::read_to_string(&path).ok()?;
     let creds = parse_my_cnf(&content);
     let pw = creds.get("password")?;
-    // Если в [client] явно указан user и он не совпадает с user из URL —
-    // лучше не подставлять (могут быть разные креды).
+    // If [client] explicitly specifies a user and it differs from the URL user —
+    // better not to inject it (they may be different credentials).
     if let Some(user_in_cnf) = creds.get("user") {
         if !url_user.is_empty() && user_in_cnf != url_user {
             return None;
@@ -381,7 +381,7 @@ bind-address = 0.0.0.0
 ";
         let creds = parse_my_cnf(content);
         assert_eq!(creds.get("user").map(|s| s.as_str()), Some("ztop_ro"));
-        // strip_quotes применяется на верхнем уровне, не в parse_my_cnf
+        // strip_quotes is applied at the top level, not inside parse_my_cnf
         let pw = strip_quotes(creds.get("password").unwrap());
         assert_eq!(pw, "sec:ret");
         assert_eq!(creds.get("host").map(|s| s.as_str()), Some("db.example.com"));

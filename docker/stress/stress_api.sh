@@ -1,18 +1,18 @@
 #!/bin/bash
-# stress_api.sh — спам по Zabbix JSON-RPC API.
+# stress_api.sh — Zabbix JSON-RPC API spam.
 #
-# Бьёт по zabbix-web (PHP) на порту 8088. Нагружает PHP-стэк и БД (через
-# веб). Запускает несколько параллельных curl-ов в цикле.
+# Hammers zabbix-web (PHP) on port 8088. Loads the PHP stack and DB (via web).
+# Runs several parallel curl loops.
 #
-# Что должно произойти в ztop:
-#   - на табе 5 Database: connections.active растёт
-#   - возможно top_queries наполнится SELECT-ами из PHP-фронта
-#   - probe Web frontend может покраснеть если PHP захлёбывается
+# What should happen in ztop:
+#   - in tab 5 Database: connections.active grows
+#   - top_queries may fill with SELECTs from the PHP frontend
+#   - probe Web frontend may go red if PHP is overwhelmed
 #
-# Использование:
+# Usage:
 #   ./stress_api.sh [DURATION_SEC] [CONCURRENCY]
 #
-# Дефолт: 60 сек, 5 параллельных потоков.
+# Default: 60 sec, 5 parallel threads.
 
 set -e
 DUR=${1:-60}
@@ -21,7 +21,7 @@ URL="http://127.0.0.1:8088/api_jsonrpc.php"
 
 if ! curl -sf -o /dev/null "$URL"; then
     echo "[api-stress] ERROR: $URL is not reachable"
-    echo "Hint: zabbix-web нужен ~30s после старта. Подожди или проверь:"
+    echo "Hint: zabbix-web needs ~30s after startup. Wait or check:"
     echo "  docker compose ps"
     exit 1
 fi

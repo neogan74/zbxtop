@@ -1,17 +1,17 @@
-# ztop testbed: full Zabbix stack для прогона ztop локально + стресс-сценарии.
+# ztop testbed: full Zabbix stack for running ztop locally + stress scenarios.
 #
-# Порты на host наружу — нестандартные, чтобы не конфликтовать с локальным
-# zabbix/postgres на машине разработчика:
-#   - PG       55432  (стандартно 5432)
-#   - SSH      22022  (стандартно 22)
-#   - trapper  10051  (стандартно 10051, стандартный, обычно не занят)
-#   - web      8088   (стандартно 8080)
+# Host-facing ports are non-standard to avoid conflicts with a local
+# zabbix/postgres installation on the developer's machine:
+#   - PG       55432  (standard 5432)
+#   - SSH      22022  (standard 22)
+#   - trapper  10051  (standard 10051, usually not in use)
+#   - web      8088   (standard 8080)
 #
-# Запуск:
-#   ./setup.sh         # генерирует SSH key
+# Usage:
+#   ./setup.sh         # generates SSH key
 #   docker compose up -d
 #
-# Подключиться ztop'ом (после правки ~/.ssh/config, см. setup.sh output):
+# Connect ztop (after editing ~/.ssh/config, see setup.sh output):
 #   ztop --config ./hosts.toml
 
 services:
@@ -46,9 +46,9 @@ services:
       POSTGRES_USER: zabbix
       POSTGRES_PASSWORD: zabbix
       POSTGRES_DB: zabbix
-      # Разрешаем zabbix.stats со всех IP — это testbed.
+      # Allow zabbix.stats from all IPs — this is a testbed.
       ZBX_STATSALLOWEDIP: "0.0.0.0/0,::/0"
-      # Чтобы ztop'у было что показывать в логе.
+      # So ztop has something to display in the log tab.
       ZBX_DEBUGLEVEL: "3"
     ports:
       - "127.0.0.1:10051:10051"

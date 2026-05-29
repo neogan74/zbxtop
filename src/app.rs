@@ -1,9 +1,9 @@
-//! Состояние приложения и логика обновления.
+//! Application state and update logic.
 //!
-//! v0.5a — мульти-хостовая модель. `App` хранит `Vec<HostState>` (по одному
-//! на отслеживаемый Zabbix-сервер) и `focused_host: usize` — индекс хоста,
-//! который сейчас в детальном просмотре. Глобальные UI-флаги (paused,
-//! editing_filter, show_runtime_menu и т.п.) остаются на `App`.
+//! v0.5a — multi-host model. `App` holds `Vec<HostState>` (one per monitored
+//! Zabbix server) and `focused_host: usize` — the index of the host currently
+//! in detailed view. Global UI flags (paused, editing_filter,
+//! show_runtime_menu, etc.) remain on `App`.
 
 use crate::collectors::{LogLine, RuntimeCmd, SysStats, ZbxProc, ZbxRoleAgg};
 use crate::db::DbStats;
@@ -24,7 +24,7 @@ pub enum Tab {
     Logs,
     Internals,
     Database,
-    /// v0.7 — синтетические пробы (TCP/DNS/PG из машины ztop).
+    /// v0.7 — synthetic probes (TCP/DNS/PG from the ztop machine).
     Probes,
 }
 
@@ -69,12 +69,12 @@ pub struct Toast {
     pub ttl_ticks: u8,
 }
 
-/// Всё, что приходит с одного хоста. Список таких в `App.hosts`.
+/// Everything that comes from one host. A list of these lives in `App.hosts`.
 #[derive(Clone, Debug)]
 pub struct HostState {
-    /// Имя для UI (произвольное, не обязательно совпадает с ssh).
+    /// UI display name (arbitrary, does not have to match ssh).
     pub name: String,
-    /// SSH-таргет (для runtime control в шапке хоста).
+    /// SSH target (used for runtime control in the host header).
     pub ssh_host: String,
     pub log_path: String,
     pub use_sudo: bool,
@@ -128,8 +128,8 @@ impl HostState {
     }
 
     pub fn apply_msg(&mut self, msg: CollectorMsg) {
-        // v0.6.1: Reset — синтетический сигнал из replay backward-seek.
-        // Сбрасываем рантайм-стейт, но сохраняем имя/SSH/флаги конфигурации.
+        // v0.6.1: Reset — synthetic signal from replay backward-seek.
+        // We reset runtime state but preserve name/SSH/configuration flags.
         if matches!(msg, CollectorMsg::Reset) {
             self.procs.clear();
             self.roles.clear();
@@ -223,8 +223,8 @@ impl HostState {
                 st.last_error = None;
             }
             CollectorMsg::Reset => {
-                // Покрыто early-return-ом выше; ветка существует для
-                // exhaustiveness match.
+                // Covered by the early return above; the branch exists for
+                // match exhaustiveness.
                 unreachable!("Reset handled before sources.entry()");
             }
             CollectorMsg::LogStreamStatus(status) => {
@@ -267,9 +267,9 @@ impl HostState {
     }
 }
 
-/// Глобальный state приложения. UI-state (вкладки, фильтры, тосты)
-/// храним здесь; всё, что приходит из коллекторов конкретного хоста — в
-/// соответствующем `HostState`.
+/// Global application state. UI state (tabs, filters, toasts)
+/// is stored here; everything coming from a specific host's collectors is in
+/// the corresponding `HostState`.
 ///
 /// WARNING: `derive(Clone)` is kept for convenience but cloning `App` shares the
 /// `Arc<AtomicU32>`/`Arc<AtomicBool>` replay state fields — both copies will observe
@@ -282,9 +282,9 @@ pub struct App {
     pub focused_host: usize,
 
     pub tab: Tab,
-    /// Курсор в Overview-табе: индекс хоста, на котором сейчас «подсветка».
-    /// При входе на Overview инициализируется в focused_host. Enter переносит
-    /// focused_host → overview_cursor и переключается на drill-down.
+    /// Cursor in the Overview tab: index of the currently highlighted host.
+    /// Initialised to focused_host when entering Overview. Enter moves
+    /// focused_host → overview_cursor and switches to drill-down.
     pub overview_cursor: usize,
     pub paused: bool,
     pub show_runtime_menu: bool,
@@ -295,29 +295,29 @@ pub struct App {
     pub last_refresh: Option<chrono::DateTime<chrono::Local>>,
     pub toast: Option<Toast>,
 
-    /// v0.6: индикаторы режима записи/воспроизведения.
-    /// Главный source-of-truth по replay-режиму: блокирует runtime control,
-    /// UI рисует другой бейдж.
+    /// v0.6: recording/replay mode indicators.
+    /// Primary source-of-truth for replay mode: disables runtime control,
+    /// UI shows a different badge.
     pub is_replay: bool,
-    /// Кол-во событий, записанных recorder-ом (для UI-индикатора).
+    /// Number of events written by the recorder (for the UI indicator).
     pub recorded_events: u64,
 
-    /// v0.6.1: канал команд для replay_loop (None если не replay).
-    /// `Space`/`n`/`>`/`<` пушат сюда `ReplayCmd`.
+    /// v0.6.1: command channel for replay_loop (None if not replaying).
+    /// `Space`/`n`/`>`/`<` push `ReplayCmd` here.
     pub replay_cmd_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::record::ReplayCmd>>,
-    /// Прогресс воспроизведения в промилле (0..=1000). Читается атомарно
-    /// из replay_loop; UI делит на 10.0 для процента.
+    /// Replay progress in per-mille (0..=1000). Read atomically from
+    /// replay_loop; UI divides by 10.0 for a percentage.
     pub replay_progress: std::sync::Arc<std::sync::atomic::AtomicU32>,
-    /// True когда replay-loop сейчас на паузе. Тоже атомарно.
+    /// True when the replay loop is currently paused. Also atomic.
     pub replay_paused_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 
-    /// v0.7: глобальные пробы (не привязаны к host). Vec индексируется
-    /// тем же индексом, что и в hosts.toml [[probe]] списке.
+    /// v0.7: global probes (not bound to a host). Vec is indexed by the
+    /// same index as the [[probe]] list in hosts.toml.
     pub probes: Vec<ProbeState>,
 
-    /// v0.5c: модал-выборщик хостов с fuzzy-search. Открывается по Ctrl-G,
-    /// показывает поле запроса + отфильтрованный список. На крупных
-    /// деплоях (20+ хостов) удобнее, чем Ctrl-N/P перебор.
+    /// v0.5c: host-picker modal with fuzzy search. Opens on Ctrl-G,
+    /// shows a query field + filtered list. On large deployments (20+ hosts)
+    /// this is more convenient than Ctrl-N/P cycling.
     pub show_host_picker: bool,
     pub host_picker_query: String,
     pub host_picker_cursor: usize,
@@ -358,14 +358,14 @@ impl App {
         }
     }
 
-    /// v0.5c: открыть host-picker. Сбрасывает query и курсор.
+    /// v0.5c: open the host-picker. Resets the query and cursor.
     pub fn open_host_picker(&mut self) {
         self.show_host_picker = true;
         self.host_picker_query.clear();
         self.host_picker_cursor = 0;
     }
 
-    /// v0.5c: применить курсор picker-а как новый focused_host.
+    /// v0.5c: apply the picker cursor as the new focused_host.
     pub fn host_picker_apply(&mut self) {
         let matches = self.host_picker_matches();
         if let Some(&host_idx) = matches.get(self.host_picker_cursor) {
@@ -375,9 +375,9 @@ impl App {
         self.show_host_picker = false;
     }
 
-    /// v0.5c: вернуть список индексов хостов, совпавших с query, отсортированный
-    /// по убыванию score (точные совпадения сверху). Пустой query → все хосты
-    /// в исходном порядке.
+    /// v0.5c: return the list of host indices matching the query, sorted by
+    /// descending score (exact matches first). Empty query → all hosts in
+    /// original order.
     pub fn host_picker_matches(&self) -> Vec<usize> {
         if self.host_picker_query.is_empty() {
             return (0..self.hosts.len()).collect();
@@ -401,12 +401,12 @@ impl App {
     }
 }
 
-/// v0.5c: fuzzy subsequence match. Возвращает score (выше — лучше совпадение)
-/// или None если query вообще не subsequence target-а.
+/// v0.5c: fuzzy subsequence match. Returns a score (higher is better)
+/// or None if the query is not a subsequence of the target at all.
 ///
-/// Score = базовые очки за каждое совпадение + бонус за consecutive runs
-/// + бонус за совпадение в начале. Это даёт нормальный ранкинг: "prod"
-/// матчит "zbx-prod-01" сильнее, чем "p…r…o…d" сильно разбросанные.
+/// Score = base points for each match + bonus for consecutive runs
+/// + bonus for a match at the start. This gives sensible ranking: "prod"
+/// matches "zbx-prod-01" more strongly than widely scattered "p…r…o…d".
 pub fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
     if query.is_empty() {
         return Some(0);
@@ -453,7 +453,7 @@ mod tests {
     fn fuzzy_consecutive_beats_scattered() {
         let exact = fuzzy_score("prod", "zbx-prod-01").unwrap();
         let scattered = fuzzy_score("pro1", "p-r-o-1-x").unwrap();
-        // consecutive "prod" должен получить больше очков, чем scattered
+        // consecutive "prod" should score higher than scattered
         assert!(exact > scattered);
     }
 
@@ -512,7 +512,7 @@ impl App {
             self.overview_cursor -= 1;
         }
     }
-    /// Применить курсор: focused_host := cursor.
+    /// Apply the cursor: focused_host := cursor.
     pub fn overview_select(&mut self) {
         self.focused_host = self.overview_cursor;
     }

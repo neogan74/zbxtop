@@ -1,16 +1,16 @@
 #!/bin/bash
-# stress_db_slow.sh — тяжёлые SELECT-ы с pg_sleep, чтобы заполнить
-# top_queries в ztop таб «5 Database».
+# stress_db_slow.sh — heavy SELECTs with pg_sleep to populate
+# top_queries in the ztop tab "5 Database".
 #
-# Что должно произойти в ztop:
-#   - top_queries показывает SELECT pg_sleep(...) с age растущим
-#   - connections.active увеличивается
-#   - возможно появится wait_event = "Lock:..." или "IO:..."
+# What should happen in ztop:
+#   - top_queries shows SELECT pg_sleep(...) with growing age
+#   - connections.active increases
+#   - wait_event = "Lock:..." or "IO:..." may appear
 #
-# Использование:
+# Usage:
 #   ./stress_db_slow.sh [DURATION_SEC] [CONCURRENCY]
 #
-# Дефолт: 60 сек, 3 параллельных запроса.
+# Default: 60 sec, 3 parallel queries.
 
 set -e
 DUR=${1:-60}

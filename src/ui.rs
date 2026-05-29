@@ -1,4 +1,4 @@
-//! Ratatui-рендеринг. Один файл — для прототипа сойдёт.
+//! Ratatui rendering. One file — good enough for a prototype.
 
 use crate::app::{App, Tab};
 use crate::collectors::LogLevel;
@@ -18,8 +18,8 @@ pub fn draw(f: &mut Frame, app: &App) {
     let per_host_diagnoses: Vec<Vec<Diagnosis>> =
         app.hosts.iter().map(|h| diagnose(h)).collect();
 
-    // Cross-source диагнозы по всем хостам, с префиксом [name]. Показываем
-    // максимум 3 — самые severe. Высота строки динамическая.
+    // Cross-source diagnoses for all hosts, prefixed with [name]. We show
+    // at most 3 — the most severe. Row height is dynamic.
     let mut diagnoses: Vec<_> = app
         .hosts
         .iter()
@@ -41,7 +41,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         .constraints([
             Constraint::Length(3),           // header
             Constraint::Length(1),           // tabs
-            Constraint::Length(diag_height), // diagnoses, 0-3 строк
+            Constraint::Length(diag_height), // diagnoses, 0-3 rows
             Constraint::Min(0),              // body
             Constraint::Length(1),           // footer
         ])
@@ -66,8 +66,8 @@ pub fn draw(f: &mut Frame, app: &App) {
     if app.show_runtime_menu {
         draw_runtime_modal(f, app);
     }
-    // v0.5c: host-picker рисуется поверх всего, включая runtime modal,
-    // чтобы Ctrl-G работал даже при открытом runtime control.
+    // v0.5c: host-picker is drawn on top of everything, including the runtime
+    // modal, so Ctrl-G works even when the runtime control is open.
     if app.show_host_picker {
         draw_host_picker(f, app);
     }
@@ -137,10 +137,10 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         },
     ]);
 
-    // Вторая строка шапки: статус каждого источника.
+    // Second header row: status of each source.
     let mut line2_spans = Vec::with_capacity(16);
 
-    // Procs и Sys — periodic-источники: бейдж по SourceState (age + duration).
+    // Procs and Sys — periodic sources: badge based on SourceState (age + duration).
     for kind in [SourceKind::Procs, SourceKind::Sys] {
         let s = host.source(kind);
         let (sym, color) = source_badge(s);
@@ -156,8 +156,8 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         ));
     }
 
-    // Logs — streaming: бейдж по log_stream.connected, а не по age (молчание
-    // лога — норма; авария — когда стрим оборвался).
+    // Logs — streaming: badge based on log_stream.connected, not age (silence
+    // in the log is normal; a failure is when the stream drops).
     let (sym, color, summary) = log_badge(app);
     line2_spans.push(Span::raw(" "));
     line2_spans.push(Span::styled(
@@ -167,7 +167,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     line2_spans.push(Span::raw(" "));
     line2_spans.push(Span::styled(summary, Style::default().fg(Color::DarkGray)));
 
-    // Stats — periodic; показываем только если transport включён.
+    // Stats — periodic; shown only if the transport is enabled.
     if host.stats_enabled {
         let s = host.source(SourceKind::Stats);
         let (sym, color) = source_badge(s);
@@ -201,7 +201,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
 
     let line2 = Line::from(line2_spans);
 
-    // Третья строка — toast (приоритет) или первая ошибка любого источника.
+    // Third row — toast (priority) or the first error from any source.
     let line3 = if let Some(t) = &app.toast {
         let color = if t.is_error { Color::Red } else { Color::Green };
         Line::from(Span::styled(t.msg.clone(), Style::default().fg(color)))
@@ -218,7 +218,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(para, area);
 }
 
-/// Иконка состояния источника + цвет.
+/// Source status icon + color.
 fn source_badge(s: &SourceState) -> (&'static str, Color) {
     if s.last_error.is_some() && s.last_ok.is_none() {
         ("✗", Color::Red)
@@ -231,7 +231,7 @@ fn source_badge(s: &SourceState) -> (&'static str, Color) {
     }
 }
 
-/// Краткая статистика источника для второй строки: "1.2s ago, 23ms".
+/// Brief source statistics for the second row: "1.2s ago, 23ms".
 fn source_summary(s: &SourceState) -> String {
     let age = s
         .age()
@@ -255,7 +255,7 @@ fn source_summary(s: &SourceState) -> String {
     format!("{age} ago, {took}{err_suffix}")
 }
 
-/// Первый источник с ошибкой (для строки шапки).
+/// First source with an error (for the header row).
 fn first_source_error(app: &App) -> Option<(SourceKind, String)> {
     let host = app.focused();
     for kind in [SourceKind::Procs, SourceKind::Sys, SourceKind::Logs] {
@@ -267,12 +267,12 @@ fn first_source_error(app: &App) -> Option<(SourceKind, String)> {
     None
 }
 
-/// Бейдж для streaming-лога: символ + цвет + текстовая сводка.
+/// Badge for the streaming log: symbol + color + text summary.
 ///
-/// Логика:
-/// - connected=true  → `●` зелёный, сводка `streaming, last 3s ago, N lines`
-/// - connected=false → `○` красный (если были реконнекты) или жёлтый (первое
-///   подключение), сводка `reconnecting ×K`
+/// Logic:
+/// - connected=true  → `●` green, summary `streaming, last 3s ago, N lines`
+/// - connected=false → `○` red (if reconnects have occurred) or yellow (first
+///   connection attempt), summary `reconnecting ×K`
 fn log_badge(app: &App) -> (&'static str, Color, String) {
     let host = app.focused();
     let ls = &host.log_stream;
@@ -300,7 +300,7 @@ fn log_badge(app: &App) -> (&'static str, Color, String) {
             format!("streaming, {last_line}{reconn}"),
         )
     } else if ls.reconnects == 0 {
-        // ещё не подключались
+        // not yet connected
         ("○", Color::Yellow, "connecting…".to_string())
     } else {
         let err = ls
@@ -316,8 +316,8 @@ fn log_badge(app: &App) -> (&'static str, Color, String) {
     }
 }
 
-/// Полоса диагнозов между tabs и body. Каждый диагноз — одна строка:
-/// `[CRIT] title — detail (sources: stats+db)`. Цвет по severity.
+/// Diagnosis strip between tabs and body. Each diagnosis is one line:
+/// `[CRIT] title — detail (sources: stats+db)`. Color by severity.
 fn draw_diagnoses(f: &mut Frame, diagnoses: &[crate::diagnose::Diagnosis], area: Rect) {
     use crate::diagnose::Diagnosis;
     let lines: Vec<Line> = diagnoses
@@ -388,8 +388,8 @@ fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(Paragraph::new(line), area);
 }
 
-/// v0.5a/b — overview по всем хостам. Сверху — таблица per-host;
-/// внизу — aggregate-строка по всему флоту (sum CPU, max load, sum queue,
+/// v0.5a/b — overview for all hosts. Top — per-host table;
+/// bottom — aggregate row across the entire fleet (sum CPU, max load, sum queue,
 /// total active diagnoses).
 fn draw_overview(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], area: Rect) {
     let chunks = Layout::default()
@@ -420,7 +420,7 @@ fn draw_overview_table(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], a
         .iter()
         .enumerate()
         .map(|(i, h)| {
-            // Светофор: счётчик здоровых источников vs всего источников.
+            // Traffic light: healthy source count vs total source count.
             let total = if h.stats_enabled { 4 } else { 3 } + if h.db_enabled { 1 } else { 0 };
             let healthy = [
                 SourceKind::Procs,
@@ -458,8 +458,8 @@ fn draw_overview_table(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], a
                 .unwrap_or_else(|| "—".into());
             let diag_count = diagnoses[i].len();
 
-            // Два маркера: cursor (для выбора) и focus (текущий открытый хост).
-            // `▸` — где сейчас курсор, `●` — какой хост в drill-down открыт.
+            // Two markers: cursor (for selection) and focus (currently open host).
+            // `▸` — where the cursor is now, `●` — which host is open in drill-down.
             let marker = match (i == app.overview_cursor, i == app.focused_host) {
                 (true, true) => "▸●",
                 (true, false) => "▸ ",
@@ -524,8 +524,8 @@ fn draw_overview_table(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], a
     f.render_widget(table, area);
 }
 
-/// Fleet-level summary под таблицей Overview. Покажет, как чувствует себя
-/// весь пул серверов в одной строке.
+/// Fleet-level summary below the Overview table. Shows how the entire server
+/// pool is doing in a single line.
 fn draw_overview_aggregate(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], area: Rect) {
     let n = app.hosts.len() as f64;
     let total_cpu: f64 = app.hosts.iter().map(|h| h.cpu_sum()).sum();
@@ -644,17 +644,17 @@ fn draw_processes(f: &mut Frame, app: &App, area: Rect) {
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(area);
 
-    // Левая колонка: агрегаты по ролям + сравнение с busy% от самого сервера.
-    // Ключевая UX: расхождение «busy от stats высокий, CPU от ps низкий»
-    // показывает, что процесс ждёт (lock/DB/IO), а не считает.
+    // Left column: aggregates by role + comparison with busy% from the server itself.
+    // Key UX insight: a divergence where "busy from stats is high, CPU from ps is low"
+    // indicates the process is waiting (lock/DB/IO) rather than computing.
     let header = Row::new(vec![
         Cell::from("Role"),
         Cell::from("Cnt"),
-        Cell::from("CPU%"),     // из ps (что реально жрёт)
+        Cell::from("CPU%"),     // from ps (what actually consumes CPU)
         Cell::from("RSS"),
-        Cell::from("BusyPs"),   // % форков, которые сейчас не idle (из proctitle)
-        Cell::from("BusyZbx"),  // busy.avg из zabbix.stats — что говорит сам сервер
-        Cell::from("Δ"),        // разница BusyZbx - BusyPs (положительное = wait)
+        Cell::from("BusyPs"),   // % of forks not idle right now (from proctitle)
+        Cell::from("BusyZbx"),  // busy.avg from zabbix.stats — what the server reports itself
+        Cell::from("Δ"),        // difference BusyZbx - BusyPs (positive = waiting)
         Cell::from("Sample status"),
     ])
     .style(Style::default().add_modifier(Modifier::BOLD));
@@ -668,9 +668,9 @@ fn draw_processes(f: &mut Frame, app: &App, area: Rect) {
             } else {
                 100.0 * r.busy as f32 / r.count as f32
             };
-            // Stats может слегка по-другому именовать роль (с пробелами/тире).
-            // Простой lookup по точному совпадению — для большинства ролей
-            // работает; если нет совпадения, ячейка пустая.
+            // Stats may name the role slightly differently (with spaces/dashes).
+            // A simple exact-match lookup works for most roles; if there is no
+            // match, the cell is left empty.
             let busy_zbx = host
                 .stats
                 .as_ref()
@@ -724,7 +724,7 @@ fn draw_processes(f: &mut Frame, app: &App, area: Rect) {
         .block(Block::default().borders(Borders::ALL).title(" Roles  (ps vs zabbix.stats) "));
     f.render_widget(table, layout[0]);
 
-    // Правая колонка: мини-графики
+    // Right column: sparkline charts
     draw_sparklines(f, app, layout[1]);
 }
 
@@ -781,7 +781,7 @@ fn draw_sparklines(f: &mut Frame, app: &App, area: Rect) {
     draw_sparkline(f, chunks[1], " Mem % ", &host.history.mem_used_pct, 100.0, Color::Green);
     draw_sparkline(f, chunks[2], " Load 1m ", &host.history.load1, 8.0, Color::Yellow);
 
-    // Внизу — гейджи мгновенных значений
+    // Bottom — instant-value gauges
     let g_area = chunks[3];
     let gauges = Layout::default()
         .direction(Direction::Vertical)
@@ -812,8 +812,8 @@ fn draw_sparkline(
     _max: f64,
     color: Color,
 ) {
-    // Sparkline ratatui хочет u64, поэтому масштабируем (×100 для процентов и loadavg
-    // даёт достаточно динамики).
+    // Ratatui Sparkline wants u64, so we scale (×100 for percentages and load average
+    // gives enough dynamic range).
     let values: Vec<u64> = data.iter().map(|v| (v * 100.0).max(0.0) as u64).collect();
     let last_str = data
         .back()
@@ -856,7 +856,7 @@ fn draw_internals(f: &mut Frame, app: &App, area: Rect) {
         ])
         .split(area);
 
-    // Шапка-идентичность сервера
+    // Server identity header
     let ident = Paragraph::new(Line::from(vec![
         Span::raw("Zabbix server "),
         Span::styled(
@@ -894,7 +894,7 @@ fn draw_internals(f: &mut Frame, app: &App, area: Rect) {
     .block(Block::default().borders(Borders::ALL).title(" Server "));
     f.render_widget(ident, layout[0]);
 
-    // Таблица процессов из stats: busy avg/max/min + count.
+    // Process table from stats: busy avg/max/min + count.
     let header = Row::new(vec![
         Cell::from("Process type"),
         Cell::from("Cnt"),
@@ -909,7 +909,7 @@ fn draw_internals(f: &mut Frame, app: &App, area: Rect) {
         .iter()
         .map(|(k, v)| (k.clone(), v))
         .collect();
-    // Сортировка по busy.avg по убыванию — самые «горячие» сверху.
+    // Sort by busy.avg descending — hottest processes at the top.
     rows.sort_by(|a, b| b.1.busy.avg.partial_cmp(&a.1.busy.avg).unwrap_or(std::cmp::Ordering::Equal));
 
     let body: Vec<Row> = rows
@@ -942,7 +942,7 @@ fn draw_internals(f: &mut Frame, app: &App, area: Rect) {
     );
     f.render_widget(table, layout[1]);
 
-    // Кэши: write/read/value — используем gauge-ы.
+    // Caches: write/read/value — rendered as gauges.
     let cache_area = layout[2];
     let cache_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -970,7 +970,7 @@ fn draw_internals(f: &mut Frame, app: &App, area: Rect) {
     }
 }
 
-/// v0.7 — синтетические пробы. Глобальные (не зависят от focused host).
+/// v0.7 — synthetic probes. Global (not tied to the focused host).
 fn draw_probes(f: &mut Frame, app: &App, area: Rect) {
     if app.probes.is_empty() {
         let hint = "No probes configured.\n\
@@ -1269,7 +1269,7 @@ fn draw_logs(f: &mut Frame, app: &App, area: Rect) {
         .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(area);
 
-    // Поле фильтра
+    // Filter field
     let filter_title = if app.editing_filter {
         " Filter (Esc — clear, Enter — apply) "
     } else {
@@ -1392,9 +1392,9 @@ fn draw_runtime_modal(f: &mut Frame, app: &App) {
     f.render_widget(list, area);
 }
 
-/// v0.5c — fuzzy host-picker overlay. Сверху поле запроса, ниже —
-/// ранжированный список хостов с маркером курсора. Полезно на 20+ хостах,
-/// где Ctrl-N/P перебирать долго.
+/// v0.5c — fuzzy host-picker overlay. Top is the query field, below is a
+/// ranked list of hosts with a cursor marker. Useful with 20+ hosts where
+/// cycling through Ctrl-N/P takes too long.
 fn draw_host_picker(f: &mut Frame, app: &App) {
     let area = centered_rect(60, 60, f.area());
     f.render_widget(Clear, area);
@@ -1415,7 +1415,7 @@ fn draw_host_picker(f: &mut Frame, app: &App) {
         ])
         .split(inner);
 
-    // Поле запроса.
+    // Query field.
     let query_para = Paragraph::new(Line::from(vec![
         Span::raw("> "),
         Span::styled(
@@ -1434,7 +1434,7 @@ fn draw_host_picker(f: &mut Frame, app: &App) {
     )));
     f.render_widget(counter, layout[1]);
 
-    // Список совпадений.
+    // Match list.
     let items: Vec<ListItem> = matches
         .iter()
         .enumerate()
@@ -1497,8 +1497,8 @@ fn centered_rect(pct_x: u16, pct_y: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
-/// Цвет колонки Δ: красный — сервер сильно «занят», ps этого не видит
-/// (типичный признак ожидания lock/DB/IO). Зелёный — busy и CPU сходятся.
+/// Color of the Δ column: red — the server is heavily "busy" but ps does not
+/// see it (typical sign of waiting on lock/DB/IO). Green — busy and CPU agree.
 fn delta_color(d: f32) -> Style {
     if d >= 30.0 {
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
@@ -1524,7 +1524,7 @@ fn pct_color(p: f32) -> Color {
 }
 
 fn load_color(l: f32) -> Color {
-    // Условный порог — без числа CPU точнее не скажешь, но для прототипа сойдёт.
+    // Approximate threshold — without a CPU count one can't be more precise, but fine for a prototype.
     if l >= 8.0 {
         Color::Red
     } else if l >= 4.0 {

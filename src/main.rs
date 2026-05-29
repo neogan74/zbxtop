@@ -1,7 +1,7 @@
-//! ztop — TUI монитор внутреннего состояния zabbix_server по SSH.
+//! ztop — TUI monitor for zabbix_server internal state over SSH.
 //!
-//! v0.5a: multi-host. Хосты задаются либо через CLI (single-host),
-//! либо через `~/.config/ztop/hosts.toml` (или `--config <path>`).
+//! v0.5a: multi-host. Hosts are configured either via CLI (single-host)
+//! or via `~/.config/ztop/hosts.toml` (or `--config <path>`).
 
 mod app;
 mod collectors;
@@ -42,13 +42,13 @@ use tokio::time::interval;
 #[derive(Parser, Debug)]
 #[command(version, about = "TUI monitor for zabbix_server over SSH", long_about = None)]
 struct Cli {
-    /// Удалённый хост (single-host shortcut). Игнорируется, если задан --config
-    /// или дефолтный конфиг существует.
+    /// Remote host (single-host shortcut). Ignored if --config is given
+    /// or the default config file exists.
     #[arg(short = 'H', long, env = "ZTOP_HOST")]
     host: Option<String>,
 
-    /// Путь к hosts.toml. По умолчанию — `~/.config/ztop/hosts.toml`
-    /// (если существует).
+    /// Path to hosts.toml. Defaults to `~/.config/ztop/hosts.toml`
+    /// (if it exists).
     #[arg(short = 'C', long, env = "ZTOP_CONFIG")]
     config: Option<PathBuf>,
 
@@ -79,17 +79,17 @@ struct Cli {
     #[arg(long, env = "ZTOP_DB_INSECURE_TLS", default_value_t = false)]
     db_insecure_tls: bool,
 
-    /// Записывать всю поступающую телеметрию в JSONL-файл для постмортема.
-    /// Пример: `--record incident-2026-05-13.jsonl`.
+    /// Record all incoming telemetry to a JSONL file for post-mortem analysis.
+    /// Example: `--record incident-2026-05-13.jsonl`.
     #[arg(long, env = "ZTOP_RECORD")]
     record: Option<PathBuf>,
 
-    /// Воспроизвести запись (read-only). Хосты, окружение, диагнозы —
-    /// всё восстанавливается. Runtime control и SSH-коннекты не делаются.
+    /// Replay a recording (read-only). Hosts, environment, diagnoses —
+    /// everything is restored. Runtime control and SSH connections are not made.
     #[arg(long, env = "ZTOP_REPLAY", conflicts_with = "record")]
     replay: Option<PathBuf>,
 
-    /// Скорость воспроизведения (1.0 — реальное время, 10.0 — в 10 раз быстрее).
+    /// Replay speed (1.0 — real time, 10.0 — 10× faster).
     #[arg(long, default_value_t = 1.0)]
     replay_speed: f64,
 }
@@ -98,14 +98,14 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Replay-режим: хосты восстанавливаются из header-а записи.
+    // Replay mode: hosts are restored from the recording header.
     let replay_header = if let Some(path) = &cli.replay {
         Some(record::read_header(path)?)
     } else {
         None
     };
 
-    // Резолвим список хостов и проб: replay > явный --config > дефолт > CLI single-host.
+    // Resolve the host and probe list: replay > explicit --config > default > CLI single-host.
     let (hosts_cfg, probes_cfg) = if let Some(h) = &replay_header {
         let hcs = h
             .hosts
@@ -137,7 +137,7 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Строим HostState и HostSpawn по конфигу.
+    // Build HostState and HostSpawn from config.
     let mut states = Vec::with_capacity(hosts_cfg.len());
     let mut spawns = Vec::with_capacity(hosts_cfg.len());
     for (idx, h) in hosts_cfg.iter().enumerate() {
@@ -180,7 +180,7 @@ async fn main() -> Result<()> {
 
     let mut app = App::new(states);
     app.is_replay = cli.replay.is_some();
-    // v0.7: инициализируем probes state
+    // v0.7: initialise probes state
     app.probes = probes_cfg
         .iter()
         .map(probes::ProbeState::from_config)
@@ -213,17 +213,17 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Резолвит финальный список (`HostConfig`, `ProbeConfig`) с учётом приоритета:
-/// --config (явный) > дефолтный hosts.toml > CLI single-host.
+/// Resolves the final (`HostConfig`, `ProbeConfig`) list respecting priority:
+/// --config (explicit) > default hosts.toml > CLI single-host.
 fn resolve_full_config(
     cli: &Cli,
 ) -> Result<(Vec<HostConfig>, Vec<probes::ProbeConfig>)> {
-    // Явный --config.
+    // Explicit --config.
     if let Some(path) = &cli.config {
         let cfg = HostsConfig::load_from(path)?;
         return Ok((cfg.hosts, cfg.probes));
     }
-    // Дефолтный путь.
+    // Default path.
     if let Some(default) = HostsConfig::default_path() {
         if default.exists() {
             let cfg = HostsConfig::load_from(&default)
@@ -231,7 +231,7 @@ fn resolve_full_config(
             return Ok((cfg.hosts, cfg.probes));
         }
     }
-    // Fallback: single-host из CLI (без проб).
+    // Fallback: single-host from CLI (no probes).
     let host = cli
         .host
         .clone()
@@ -268,11 +268,11 @@ async fn run_app<B: ratatui::backend::Backend>(
 ) -> Result<()> {
     let base_interval = Duration::from_secs(tick_sec.max(1));
     let (tx, mut rx) = mpsc::channel::<HostMsg>(512);
-    // v0.7: отдельный канал для проб (они глобальные, не привязаны к host).
+    // v0.7: separate channel for probes (they are global, not bound to a host).
     let (probe_tx, mut probe_rx) = mpsc::channel::<probes::ProbeMsg>(128);
     let _probe_handles = probes::spawn_probes(probes_cfg, probe_tx);
 
-    // Recorder (если --record): открываем файл, пишем header с хостами.
+    // Recorder (if --record): open the file and write the header with hosts.
     let mut recorder: Option<record::Recorder> = if let Some(path) = &record_path {
         let metas: Vec<record::HostMeta> = app
             .hosts
@@ -290,11 +290,11 @@ async fn run_app<B: ratatui::backend::Backend>(
         None
     };
 
-    // Замена для spawn_collectors: либо живые коллекторы, либо replay-loop.
+    // Replacement for spawn_collectors: either live collectors or a replay loop.
     let handles: Option<CollectorHandles> = if let Some(path) = replay_path {
-        // Replay-режим (v0.6.1): загружаем всю запись в память, чтобы
-        // поддерживать seek в обе стороны. Команды управления идут через
-        // unbounded-канал из event-loop.
+        // Replay mode (v0.6.1): load the entire recording into memory to
+        // support seeking in both directions. Control commands come through
+        // an unbounded channel from the event loop.
         let (_header, events) = record::load_recording(&path)?;
         let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         app.replay_cmd_tx = Some(cmd_tx);
@@ -321,8 +321,8 @@ async fn run_app<B: ratatui::backend::Backend>(
             maybe_event = events.next() => {
                 match maybe_event {
                     Some(Ok(Event::Key(key))) => {
-                        // В replay-режиме refresh/reconnect не имеют смысла —
-                        // даём заглушки-Notify, которые никого не разбудят.
+                        // In replay mode refresh/reconnect have no meaning —
+                        // provide dummy Notify instances that wake nobody.
                         let dummy_refresh = std::sync::Arc::new(tokio::sync::Notify::new());
                         let dummy_log_reconnect = std::sync::Arc::new(tokio::sync::Notify::new());
                         let (refresh, log_reconnect) = match &handles {
@@ -346,8 +346,8 @@ async fn run_app<B: ratatui::backend::Backend>(
                 terminal.draw(|f| ui::draw(f, app))?;
             }
             Some(host_msg) = rx.recv() => {
-                // Запись (если включена) — до apply_msg, потому что HostMsg
-                // потребляется ниже. Recorder клонирует данные внутри.
+                // Recording (if enabled) — before apply_msg, because HostMsg
+                // is consumed below. Recorder clones the data internally.
                 if let Some(rec) = &mut recorder {
                     if !matches!(host_msg.msg, CollectorMsg::Reset) {
                         rec.write(&host_msg);
@@ -373,7 +373,7 @@ async fn run_app<B: ratatui::backend::Backend>(
     if let Some(h) = handles {
         h.shutdown();
     }
-    // recorder.drop() флашит файл автоматически
+    // recorder.drop() flushes the file automatically
     drop(recorder);
     Ok(())
 }
@@ -388,7 +388,7 @@ async fn handle_key(
         return Ok(true);
     }
 
-    // v0.5c: модал-выборщик хостов перехватывает ввод до всего остального.
+    // v0.5c: the host-picker modal intercepts input before everything else.
     if app.show_host_picker {
         let n_matches = app.host_picker_matches().len();
         match key.code {
@@ -421,13 +421,13 @@ async fn handle_key(
         }
         return Ok(false);
     }
-    // Ctrl-G — открыть модал.
+    // Ctrl-G — open the modal.
     if key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('g')) {
         app.open_host_picker();
         return Ok(false);
     }
 
-    // v0.6.1: команды управления replay-сессией.
+    // v0.6.1: replay session control commands.
     if app.is_replay {
         if let Some(tx) = &app.replay_cmd_tx {
             use crate::record::ReplayCmd;
@@ -451,7 +451,7 @@ async fn handle_key(
         }
     }
 
-    // Ctrl-N / Ctrl-P: переключение фокуса между хостами (на любом табе).
+    // Ctrl-N / Ctrl-P: switch focus between hosts (on any tab).
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
             KeyCode::Char('n') => {
@@ -507,7 +507,7 @@ async fn handle_key(
         return Ok(false);
     }
 
-    // Стрелки/Enter в Overview табе — навигация по хостам.
+    // Arrow keys/Enter in the Overview tab — navigate between hosts.
     if app.tab == Tab::Overview {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
@@ -531,7 +531,7 @@ async fn handle_key(
         KeyCode::Char('q') => return Ok(true),
         KeyCode::Tab => app.next_tab(),
         KeyCode::Char('0') => {
-            // При входе на Overview синхронизируем курсор с focused_host.
+            // When entering Overview, sync the cursor with focused_host.
             app.overview_cursor = app.focused_host;
             app.tab = Tab::Overview;
         }

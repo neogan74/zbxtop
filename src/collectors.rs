@@ -1,7 +1,7 @@
-//! Парсеры удалённых данных: процессы zabbix_server, /proc, логи.
+//! Parsers for remote data: zabbix_server processes, /proc, logs.
 //!
-//! Все коллекторы — чистые функции от строки stdout к структурам.
-//! Это позволяет тестировать их офлайн (есть unit-тесты с зашитыми примерами).
+//! All collectors are pure functions from stdout string to structs.
+//! This allows offline testing (there are unit tests with hardcoded samples).
 
 use crate::ssh::{run, SshTarget};
 use anyhow::Result;
@@ -10,9 +10,9 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-// ---------- Процессы zabbix_server ----------
+// ---------- zabbix_server processes ----------
 
-/// Одна строка `ps` для процесса zabbix_server.
+/// One `ps` line for a zabbix_server process.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ZbxProc {
     pub pid: u32,
@@ -20,15 +20,15 @@ pub struct ZbxProc {
     pub mem: f32, // %
     pub rss_kb: u64,
     pub etimes: u64,
-    /// Чистая роль, например "poller", "history syncer", "trapper".
+    /// Clean role name, e.g. "poller", "history syncer", "trapper".
     pub role: String,
-    /// Текст в квадратных скобках из proctitle — статус: "got 1 values...", "idle 3 sec".
+    /// Text in square brackets from proctitle — status: "got 1 values...", "idle 3 sec".
     pub status: String,
-    /// True, если строка статуса говорит об idle (нет работы прямо сейчас).
+    /// True if the status string indicates idle (no work right now).
     pub idle: bool,
 }
 
-/// Агрегат по роли.
+/// Aggregate by role.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ZbxRoleAgg {
     pub role: String,
@@ -39,13 +39,13 @@ pub struct ZbxRoleAgg {
     pub sample_status: String,
 }
 
-/// Регекс выделяет: pid, %cpu, %mem, rss(KB), etimes (секунды от старта), args.
+/// Regex extracts: pid, %cpu, %mem, rss(KB), etimes (seconds since start), args.
 static PS_LINE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^\s*(?P<pid>\d+)\s+(?P<cpu>[\d.]+)\s+(?P<mem>[\d.]+)\s+(?P<rss>\d+)\s+(?P<etimes>\d+)\s+(?P<args>.+)$").unwrap()
 });
 
-/// Из args выделяем "zabbix_server: <role> #N [status...]" или
-/// "zabbix_proxy: <role> #N [status...]". Роль может быть многословной
+/// From args we extract "zabbix_server: <role> #N [status...]" or
+/// "zabbix_proxy: <role> #N [status...]". The role may be multi-word
 /// ("history syncer", "data sender", "vmware collector", "lld manager",
 /// "preprocessing worker").
 static TITLE: Lazy<Regex> = Lazy::new(|| {
@@ -64,8 +64,8 @@ pub fn parse_ps(output: &str) -> Vec<ZbxProc> {
         };
         let args = caps.name("args").map(|m| m.as_str()).unwrap_or("");
         let Some(title) = TITLE.captures(args) else {
-            // Это, скорее всего, родительский /usr/sbin/zabbix_server, его пропускаем —
-            // он отдельной строки в дашборде не заслуживает.
+            // This is most likely the parent /usr/sbin/zabbix_server process; skip it —
+            // it does not deserve its own row in the dashboard.
             continue;
         };
         let role = title["role"].trim().to_string();
@@ -106,14 +106,14 @@ pub fn aggregate_roles(procs: &[ZbxProc]) -> Vec<ZbxRoleAgg> {
         }
     }
     let mut v: Vec<_> = map.into_values().collect();
-    // Сортируем по убыванию суммарного CPU — самые активные сверху.
+    // Sort by total CPU descending — most active roles at the top.
     v.sort_by(|a, b| b.cpu_sum.partial_cmp(&a.cpu_sum).unwrap_or(std::cmp::Ordering::Equal));
     v
 }
 
 pub async fn fetch_procs(t: &SshTarget) -> Result<Vec<ZbxProc>> {
-    // `ww` — не обрезать длинные args. Заголовок отключаем через `--no-headers` (procps);
-    // на BSD-ps его нет, поэтому используем awk-фильтр зачистки.
+    // `ww` — do not truncate long args. We suppress the header via `--no-headers` (procps);
+    // BSD ps doesn't have that flag, so we use an awk filter to strip it.
     let out = run(
         t,
         "ps -eo pid,pcpu,pmem,rss,etimes,args ww 2>/dev/null | awk 'NR>1 && /zabbix_(server|proxy):/'",
@@ -122,7 +122,7 @@ pub async fn fetch_procs(t: &SshTarget) -> Result<Vec<ZbxProc>> {
     Ok(parse_ps(&out))
 }
 
-// ---------- Системные метрики ----------
+// ---------- System metrics ----------
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct SysStats {
@@ -160,7 +160,7 @@ pub fn parse_loadavg(s: &str) -> (f32, f32, f32) {
 }
 
 pub fn parse_meminfo(s: &str) -> (u64, u64, u64, u64) {
-    // вернёт (mem_total, mem_available, swap_total, swap_free) в KiB
+    // returns (mem_total, mem_available, swap_total, swap_free) in KiB
     let mut mt = 0u64;
     let mut ma = 0u64;
     let mut st = 0u64;
@@ -189,7 +189,7 @@ pub fn parse_uptime(s: &str) -> u64 {
 }
 
 pub async fn fetch_sys(t: &SshTarget) -> Result<SysStats> {
-    // Один SSH-вызов, три файла — экономим round-trips.
+    // One SSH call, three files — saves round-trips.
     let out = run(
         t,
         "echo '--LOADAVG--'; cat /proc/loadavg; echo '--MEMINFO--'; cat /proc/meminfo; echo '--UPTIME--'; cat /proc/uptime",
@@ -226,7 +226,7 @@ pub async fn fetch_sys(t: &SshTarget) -> Result<SysStats> {
     Ok(stats)
 }
 
-// ---------- Логи ----------
+// ---------- Logs ----------
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LogLine {
@@ -244,7 +244,7 @@ pub enum LogLevel {
 }
 
 pub fn classify(line: &str) -> LogLevel {
-    // Zabbix не помечает уровень в каждой строке явно, но эвристики работают:
+    // Zabbix does not explicitly mark the level in every line, but heuristics work:
     let l = line.to_lowercase();
     if l.contains("[z3001]")
         || l.contains("cannot ")
@@ -302,14 +302,14 @@ impl RuntimeCmd {
 }
 
 pub async fn runtime_control(t: &SshTarget, sudo: bool, cmd: RuntimeCmd) -> Result<String> {
-    // sudo делается БЕЗ -S — пароля не будет, ssh BatchMode=yes; пользователь должен
-    // настроить NOPASSWD для конкретной команды (см. README).
+    // sudo is called WITHOUT -S — no password prompt; ssh BatchMode=yes; the user must
+    // configure NOPASSWD for the specific command (see README).
     let prefix = if sudo { "sudo -n " } else { "" };
     let full = format!("{prefix}zabbix_server -R {} 2>&1", cmd.arg());
     run(t, &full).await
 }
 
-// ---------- Тесты ----------
+// ---------- Tests ----------
 
 #[cfg(test)]
 mod tests {

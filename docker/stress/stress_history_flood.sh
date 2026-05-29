@@ -1,18 +1,18 @@
 #!/bin/bash
-# stress_history_flood.sh — комбо-сценарий: trapper-flood + zombie-tx.
-# Цель — поджечь правило rule_history_backed_up:
+# stress_history_flood.sh — combo scenario: trapper-flood + zombie-tx.
+# Goal: trigger the rule rule_history_backed_up:
 #   [CRIT] history not landing in DB — history syncer busy 95%
 #          + N queries on history* waiting (DB conn waiting=K)  (stats+db)
 #
-# Что делает:
-#   1. Запускает stress_db_zombie_tx в фоне (на 5 мин), создавая нагрузку на autovacuum.
-#   2. Через 5 сек запускает массовый trapper-flood — много values за раз.
-#   3. Cleanup через trap.
+# What it does:
+#   1. Starts stress_db_zombie_tx in the background (for 5 min), loading autovacuum.
+#   2. After 5 sec starts a heavy trapper-flood — many values at once.
+#   3. Cleanup via trap.
 #
-# Использование:
+# Usage:
 #   ./stress_history_flood.sh [TRAPPER_DURATION]
 #
-# Дефолт: 90 сек trapper-flood (zombie-tx тянется 300 сек).
+# Default: 90 sec trapper-flood (zombie-tx runs for 300 sec).
 
 set -e
 cd "$(dirname "$0")"

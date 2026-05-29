@@ -1,12 +1,12 @@
-//! v0.4b — алерт-аккорд: правила, которые опираются на ДВА и более источника.
+//! v0.4b — alert chord: rules that rely on TWO or more sources.
 //!
-//! Каждое правило само по себе ничего нового не показывает — но пересечение
-//! сигналов из разных слоёв (OS / zabbix.stats / DB) даёт диагноз, который
-//! нельзя получить, глядя только на один таб.
+//! Each rule by itself shows nothing new — but the intersection of signals
+//! from different layers (OS / zabbix.stats / DB) produces a diagnosis that
+//! cannot be obtained by looking at a single tab alone.
 //!
-//! Пример: `history syncer busy = 95%` (stats) **И** «много insert-ов в
-//! `history*` в waiting» (DB) → значит история не успевает уходить в БД.
-//! Только зная оба факта, можем поставить диагноз.
+//! Example: `history syncer busy = 95%` (stats) **AND** "many inserts into
+//! `history*` in waiting" (DB) → the history writer cannot keep up with the DB.
+//! Only knowing both facts can we make the diagnosis.
 
 use crate::app::HostState;
 
@@ -22,13 +22,13 @@ pub struct Diagnosis {
     pub severity: Severity,
     pub title: String,
     pub detail: String,
-    /// Какие источники участвовали в принятии решения. Полезно для отладки и
-    /// для пометки «диагноз стал недостоверен, потому что один источник упал».
+    /// Which sources contributed to the decision. Useful for debugging and
+    /// for flagging "the diagnosis became unreliable because one source went down".
     pub sources: Vec<&'static str>,
 }
 
-/// Запустить все правила. Возвращает только сработавшие диагнозы,
-/// отсортированные по убыванию severity. Дублей нет.
+/// Run all rules. Returns only the triggered diagnoses,
+/// sorted by descending severity. No duplicates.
 pub fn diagnose(app: &HostState) -> Vec<Diagnosis> {
     let mut out: Vec<Diagnosis> = [
         rule_history_backed_up(app),
@@ -41,15 +41,15 @@ pub fn diagnose(app: &HostState) -> Vec<Diagnosis> {
     .into_iter()
     .flatten()
     .collect();
-    // Severity desc, затем по title для стабильности
+    // Severity desc, then by title for stability
     out.sort_by(|a, b| b.severity.cmp(&a.severity).then(a.title.cmp(&b.title)));
     out
 }
 
 // ---------- rules ----------
 
-/// «История не успевает в БД»: history syncer от stats > 85% busy,
-/// и в DB есть waiting/lock-event-ы на history-таблицах или connections.waiting > 0.
+/// "History can't keep up with DB": history syncer from stats > 85% busy,
+/// and DB has waiting/lock events on history tables or connections.waiting > 0.
 fn rule_history_backed_up(app: &HostState) -> Option<Diagnosis> {
     let stats = app.stats.as_ref()?;
     let hs = stats.process.get("history syncer")?;
@@ -82,7 +82,7 @@ fn rule_history_backed_up(app: &HostState) -> Option<Diagnosis> {
     })
 }
 
-/// «Lock contention в БД»: locks_waiting > 0 и/или top-query c wait_event="Lock:..."
+/// "DB lock contention": locks_waiting > 0 and/or a top query with wait_event="Lock:..."
 fn rule_db_lock_contention(app: &HostState) -> Option<Diagnosis> {
     let db = app.db.as_ref()?;
     let with_lock_event = db
@@ -114,9 +114,9 @@ fn rule_db_lock_contention(app: &HostState) -> Option<Diagnosis> {
     })
 }
 
-/// «Idle-in-transaction зомби»: idle-in-tx коннект, висящий > 60 сек.
-/// Это типичная причина, по которой housekeeper или autovacuum не может
-/// почистить старые версии строк.
+/// "Idle-in-transaction zombie": an idle-in-tx connection stuck for > 60 sec.
+/// This is the typical reason housekeeper or autovacuum cannot clean up
+/// old row versions.
 fn rule_idle_in_tx_zombie(app: &HostState) -> Option<Diagnosis> {
     let db = app.db.as_ref()?;
     let zombies: Vec<_> = db
@@ -148,8 +148,8 @@ fn rule_idle_in_tx_zombie(app: &HostState) -> Option<Diagnosis> {
     })
 }
 
-/// «Очередь растёт, а процессы простаивают»: stats.queue > 1000,
-/// при этом никакой процесс не busy > 30%.
+/// "Queue growing while workers idle": stats.queue > 1000,
+/// yet no process is busy > 30%.
 fn rule_queue_vs_idle(app: &HostState) -> Option<Diagnosis> {
     let stats = app.stats.as_ref()?;
     let queue = stats.queue_total()?;
@@ -179,8 +179,8 @@ fn rule_queue_vs_idle(app: &HostState) -> Option<Diagnosis> {
     })
 }
 
-/// «Процесс ждёт, не считает»: для какой-то роли busy от stats сильно
-/// больше, чем «busy» от ps (доля не-idle форков по proctitle).
+/// "Process waiting, not computing": for some role the busy% from stats is
+/// significantly higher than "busy" from ps (fraction of non-idle forks by proctitle).
 fn rule_busy_cpu_delta(app: &HostState) -> Option<Diagnosis> {
     let stats = app.stats.as_ref()?;
     let mut worst: Option<(String, f32)> = None;
@@ -219,7 +219,7 @@ fn rule_busy_cpu_delta(app: &HostState) -> Option<Diagnosis> {
     })
 }
 
-/// Replication lag > 30 секунд.
+/// Replication lag > 30 seconds.
 fn rule_replication_lag(app: &HostState) -> Option<Diagnosis> {
     let db = app.db.as_ref()?;
     let lag = db.replication_lag_sec?;
