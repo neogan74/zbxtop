@@ -33,6 +33,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         })
         .collect();
     diagnoses.sort_by(|a, b| b.severity.cmp(&a.severity));
+    let total_diag_count = diagnoses.len();
     diagnoses.truncate(3);
     let diag_height = diagnoses.len() as u16;
 
@@ -50,7 +51,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_header(f, app, root[0]);
     draw_tabs(f, app, root[1]);
     if diag_height > 0 {
-        draw_diagnoses(f, &diagnoses, root[2]);
+        draw_diagnoses(f, &diagnoses, total_diag_count, root[2]);
     }
     match app.tab {
         Tab::Overview => draw_overview(f, app, &per_host_diagnoses, root[3]),
@@ -316,39 +317,65 @@ fn log_badge(app: &App) -> (&'static str, Color, String) {
     }
 }
 
-/// Diagnosis strip between tabs and body. Each diagnosis is one line:
-/// `[CRIT] title — detail (sources: stats+db)`. Color by severity.
-fn draw_diagnoses(f: &mut Frame, diagnoses: &[crate::diagnose::Diagnosis], area: Rect) {
-    use crate::diagnose::Diagnosis;
-    let lines: Vec<Line> = diagnoses
-        .iter()
-        .take(3)
-        .map(|d: &Diagnosis| {
-            let (tag, color) = match d.severity {
-                Severity::Critical => ("CRIT", Color::Red),
-                Severity::Warning => ("WARN", Color::Yellow),
-                Severity::Info => ("INFO", Color::Cyan),
-            };
-            Line::from(vec![
-                Span::styled(
-                    format!("[{}] ", tag),
-                    Style::default().fg(color).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    d.title.clone(),
-                    Style::default().fg(color).add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" — "),
-                Span::raw(d.detail.clone()),
-                Span::styled(
-                    format!("  ({})", d.sources.join("+")),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ])
-        })
-        .collect();
-    let para = Paragraph::new(lines).wrap(Wrap { trim: true });
-    f.render_widget(para, area);
+/// Diagnosis strip between tabs and body. Each diagnosis is one line with a
+/// tinted background: dark red for Critical, dark yellow for Warning.
+/// If more than 3 diagnoses exist, a `+N more` suffix is appended to the last line.
+fn draw_diagnoses(
+    f: &mut Frame,
+    diagnoses: &[crate::diagnose::Diagnosis],
+    total: usize,
+    area: Rect,
+) {
+    let width = area.width as usize;
+    let shown = diagnoses.len();
+
+    for (idx, d) in diagnoses.iter().enumerate() {
+        let (tag, fg, bg) = match d.severity {
+            Severity::Critical => ("CRIT", Color::White,       Color::Rgb(90, 20, 20)),
+            Severity::Warning  => ("WARN", Color::Rgb(255,220,0), Color::Rgb(60, 50, 10)),
+            Severity::Info     => ("INFO", Color::Cyan,         Color::Rgb(10, 40, 60)),
+        };
+
+        let sources = format!("  ({})", d.sources.join("+"));
+        let prefix = format!(" [{tag}] ");
+        let title_sep = format!("{} — ", d.title);
+
+        // Build the suffix shown on the last visible line when there are hidden diagnoses.
+        let overflow = if idx == shown - 1 && total > shown {
+            format!("  … +{} more", total - shown)
+        } else {
+            String::new()
+        };
+
+        // Reserve space for sources and overflow; truncate detail to fit.
+        let fixed = prefix.len() + title_sep.len() + sources.len() + overflow.len();
+        let detail_max = width.saturating_sub(fixed);
+        let detail: String = d.detail.chars().take(detail_max).collect();
+
+        let line = Line::from(vec![
+            Span::styled(
+                prefix,
+                Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                title_sep,
+                Style::default().fg(fg).bg(bg).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(detail, Style::default().fg(Color::White).bg(bg)),
+            Span::styled(sources, Style::default().fg(Color::DarkGray).bg(bg)),
+            Span::styled(overflow, Style::default().fg(Color::DarkGray).bg(bg)),
+            // Pad to full width so the background tint covers the entire row.
+            Span::styled(" ".repeat(width), Style::default().bg(bg)),
+        ]);
+
+        let row_area = Rect {
+            x: area.x,
+            y: area.y + idx as u16,
+            width: area.width,
+            height: 1,
+        };
+        f.render_widget(Paragraph::new(line), row_area);
+    }
 }
 
 fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
@@ -487,16 +514,17 @@ fn draw_overview_table(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], a
                 Cell::from(format!("{:>5.2}", load))
                     .style(Style::default().fg(load_color(load))),
                 Cell::from(queue),
-                Cell::from(if diag_count > 0 {
-                    format!("{}!", diag_count)
-                } else {
-                    "0".into()
-                })
-                .style(Style::default().fg(if diag_count > 0 {
-                    Color::Red
-                } else {
-                    Color::Green
-                })),
+                {
+                    let has_crit = diagnoses[i].iter().any(|d| d.severity == Severity::Critical);
+                    let (label, color) = if diag_count == 0 {
+                        ("✓".into(), Color::Green)
+                    } else if has_crit {
+                        (format!("✖ {diag_count}"), Color::Red)
+                    } else {
+                        (format!("⚠ {diag_count}"), Color::Yellow)
+                    };
+                    Cell::from(label).style(Style::default().fg(color).add_modifier(Modifier::BOLD))
+                },
                 Cell::from(format!("{}/{}", healthy, total))
                     .style(Style::default().fg(Color::DarkGray)),
             ])
@@ -611,22 +639,24 @@ fn draw_overview_aggregate(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>
         Span::raw("   diagnoses "),
         Span::styled(
             total_diag.to_string(),
-            Style::default().fg(if total_diag > 0 {
+            Style::default().fg(if critical_diag > 0 {
+                Color::Red
+            } else if total_diag > 0 {
                 Color::Yellow
             } else {
                 Color::Green
-            }),
+            }).add_modifier(Modifier::BOLD),
         ),
-        Span::raw("  ("),
         Span::styled(
-            format!("{} critical", critical_diag),
-            Style::default().fg(if critical_diag > 0 {
-                Color::Red
+            if critical_diag > 0 {
+                format!("  ({} critical)", critical_diag)
+            } else if total_diag > 0 {
+                "  (warnings only)".to_string()
             } else {
-                Color::DarkGray
-            }),
+                "  (all clear)".to_string()
+            },
+            Style::default().fg(if critical_diag > 0 { Color::Red } else { Color::DarkGray }),
         ),
-        Span::raw(")"),
     ]);
 
     let para = Paragraph::new(vec![line1, line2]).block(

@@ -22,14 +22,13 @@ Covers all four layers of the ztop architecture:
 ## Starting up
 
 ```bash
-cd docker
-
-# 1. Generate SSH key and get instructions
-./setup.sh
+# 1. Generate SSH key and get instructions (run from repo root)
+./docker/setup.sh
 
 # 2. Add the block to ~/.ssh/config (from setup.sh output)
 
-# 3. Start the stack
+# 3. Start the stack (run from docker/ directory)
+cd docker
 docker compose up -d --build
 
 # 4. Wait ~30 seconds for DB and web initialisation
@@ -44,7 +43,7 @@ cargo run --release -- --config docker/hosts.toml
 In the UI all sources should light up: `[ps ✓]` `[sys ✓]` `[log ●]`
 `[stats ✓]` `[db ✓]`, plus probes in tab `6 Probes` — all OK.
 
-Web UI: http://127.0.0.1:8088 (login `Admin` / password `zabbix`).
+Web UI: <http://127.0.0.1:8088> (login `Admin` / password `zabbix`).
 
 ## Stress scenarios
 

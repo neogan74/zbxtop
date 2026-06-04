@@ -35,7 +35,7 @@ cat <<EOF
         HostName 127.0.0.1
         Port 22022
         User ztop
-        IdentityFile $ABSKEY
+        IdentityFile "$ABSKEY"
         IdentitiesOnly yes
         UserKnownHostsFile /dev/null
         StrictHostKeyChecking no
