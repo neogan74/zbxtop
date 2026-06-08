@@ -51,7 +51,7 @@ Don't want to risk a production Zabbix? Bring up the full stack locally with
 docker-compose — all four layers (OS / Zabbix / PG / probes) work end-to-end,
 including stress scenarios that can trigger specific diagnose rules:
 
-```
+```bash
 cd docker && ./setup.sh && docker compose up -d --build
 cargo run --release -- --config docker/hosts.toml
 ```
@@ -60,7 +60,7 @@ Details: [docker/README.md](docker/README.md).
 
 ## Build
 
-```
+```bash
 cargo build --release
 ```
 
