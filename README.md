@@ -1,94 +1,90 @@
 # ztop
 
-Консольный (TUI) монитор внутреннего состояния **zabbix_server** по SSH.
-Цель — наблюдать за процессами и логами Zabbix-сервера тогда, когда веб-UI/API
-тормозят или недоступны: данные собираются напрямую из ОС (`ps`, `/proc`, log
-tail) и через runtime-control команды самого `zabbix_server`.
+A console (TUI) monitor for the internal state of **zabbix_server** over SSH.
+The goal is to observe Zabbix server processes and logs when the web UI/API
+is slow or unavailable: data is collected directly from the OS (`ps`, `/proc`, log
+tail) and via the runtime-control commands of `zabbix_server` itself.
 
-## Что показывает
+> [Русская документация](docs/README.ru.md)
 
-- **Шапка** — общие метрики хоста (load, mem, swap, uptime) и **бейджи по
-  каждому источнику данных**: `[ps ✓] 1s ago, 23ms` для ps/sys/stats,
-  `[log ●] streaming` для стрима. Цвет показывает здоровье: зелёный — свежо,
-  жёлтый — STALE (>10s без обновления), красный — не отвечает. Видно сразу,
-  какой коллектор тупит.
-- **Processes** — таблица агрегатов по ролям форков `zabbix_server` (poller,
+## What it shows
+
+- **Header** — host-level metrics (load, mem, swap, uptime) and **per-source badges**:
+  `[ps ✓] 1s ago, 23ms` for ps/sys/stats, `[log ●] streaming` for the log stream.
+  Color indicates health: green = fresh, yellow = STALE (>10s without update), red = not responding.
+  You can immediately see which collector is stuck.
+- **Processes** — a table of aggregates by `zabbix_server` fork roles (poller,
   trapper, history syncer, preprocessing worker, lld manager, escalator, ...):
-  количество, суммарный CPU% (из ps), RSS, **BusyPs%** (% форков не-idle из
-  proctitle), **BusyZbx%** (busy.avg из `zabbix.stats`), **Δ** — расхождение.
-  Большой положительный Δ красным = сервер считает себя занятым, а ps этого
-  не видит → форки ждут на lock/DB/IO.
-- **Internals** — данные напрямую от `zabbix_server` через trapper-порт без
-  PHP/Apache/БД: version, uptime, очередь, vps, busy% per process type c
-  avg/max/min, утилизация write/read/value кэшей. Этот таб работает даже
-  когда веб-UI лежит.
-- **Database** (PostgreSQL) — третий слой: connections by state (active/idle/
-  idle-in-tx/waiting), top long-running queries c wait events, locks waiting,
-  размеры zabbix-таблиц (history/trends/events с ASCII-баром), репликационный
-  лаг. Видно отдельно от Zabbix-сервера: PG может лагать, пока сервер ещё
-  считает себя здоровым.
-- **Diagnoses** (полоса над body, видна на любом табе) — **алерт-аккорд**:
-  правила, которые опираются на ≥2 источника одновременно. Примеры:
-  «history syncer busy 95% + waiting INSERT в `history*` → история не
-  успевает в БД», «Δ busy(zbx) - busy(ps) = +50% → процесс ждёт, а не
-  считает», «idle-in-tx > 600s → housekeeper заблокирован». Цветовая
-  градация Critical / Warning / Info, показывается до 3 диагнозов
-  одновременно, секция исчезает если всё ок.
-- **Graphs** — ASCII-спарклайны последних ~8 минут: суммарный CPU форков,
-  используемая память, loadavg(1m).
-- **Logs** — **real-time streaming** `zabbix_server.log` через `tail -F` по
-  одному long-lived ssh-каналу. Строки появляются мгновенно, не пакетами.
-  Подсветка уровня (error/warning/info) и live-фильтр. Бейдж в шапке
-  показывает статус стрима (`●` streaming / `○` reconnecting ×N).
-- **Runtime control** — горячие клавиши и модальное меню для команд
-  `zabbix_server -R`: log_level_increase/decrease, config_cache_reload,
-  snmp_cache_reload, housekeeper_execute, diaginfo.
+  count, total CPU% (from ps), RSS, **BusyPs%** (% of non-idle forks from proctitle),
+  **BusyZbx%** (busy.avg from `zabbix.stats`), **Δ** — the difference.
+  A large positive Δ in red = the server considers itself busy but ps doesn't see it
+  → forks are waiting on lock/DB/IO.
+- **Internals** — data directly from `zabbix_server` via the trapper port without
+  PHP/Apache/DB: version, uptime, queue, vps, busy% per process type with
+  avg/max/min, write/read/value cache utilization. This tab works even when the web UI is down.
+- **Database** (PostgreSQL) — a third layer: connections by state (active/idle/
+  idle-in-tx/waiting), top long-running queries with wait events, lock waiters,
+  Zabbix table sizes (history/trends/events with ASCII bars), replication lag.
+  Visible independently from the Zabbix server: PG can be lagging while the server still
+  considers itself healthy.
+- **Diagnoses** (strip above the body, visible on any tab) — **alert chord**:
+  rules that rely on ≥2 sources simultaneously. Examples:
+  "history syncer busy 95% + waiting INSERT on `history*` → history not landing in DB",
+  "Δ busy(zbx) - busy(ps) = +50% → process is waiting, not computing",
+  "idle-in-tx > 600s → housekeeper is blocked". Color-coded Critical / Warning / Info,
+  shows up to 3 diagnoses at a time, the section disappears when everything is OK.
+- **Graphs** — ASCII sparklines for the last ~8 minutes: total fork CPU,
+  used memory, loadavg(1m).
+- **Logs** — **real-time streaming** of `zabbix_server.log` via `tail -F` over
+  a single long-lived SSH channel. Lines appear instantly, not in batches.
+  Level highlighting (error/warning/info) and live filter. The header badge
+  shows stream status (`●` streaming / `○` reconnecting ×N).
+- **Runtime control** — hotkeys and modal menu for `zabbix_server -R` commands:
+  log_level_increase/decrease, config_cache_reload, snmp_cache_reload,
+  housekeeper_execute, diaginfo.
 
-API Zabbix **не используется принципиально** — инструмент должен работать,
-когда сама база/UI/API тормозят.
+Zabbix API is **intentionally not used** — the tool must work when the DB/UI/API itself is slow.
 
-## Локальный testbed (docker-compose)
+## Local testbed (docker-compose)
 
-Не хочешь рисковать прод-Zabbix-ом? Подними локально весь стек через
-docker-compose — все четыре слоя (OS / Zabbix / PG / probes) работают
-end-to-end. Со stress-сценариями, которые умеют поджигать конкретные
-правила diagnose:
+Don't want to risk a production Zabbix? Bring up the full stack locally with
+docker-compose — all four layers (OS / Zabbix / PG / probes) work end-to-end,
+including stress scenarios that can trigger specific diagnose rules:
 
 ```
 cd docker && ./setup.sh && docker compose up -d --build
 cargo run --release -- --config docker/hosts.toml
 ```
 
-Подробнее: [docker/README.md](docker/README.md).
+Details: [docker/README.md](docker/README.md).
 
-## Сборка
+## Build
 
 ```
 cargo build --release
 ```
 
-Готовый бинарь — `target/release/ztop` (~3–5 МБ, статически линкованный
-большинством зависимостей).
+The resulting binary is `target/release/ztop` (~3–5 MB, statically linked for most dependencies).
 
-## Запуск
+## Running
 
 **Single-host (CLI):**
 
 ```
 ztop --host zbx-prod-01 \
      --log  /var/log/zabbix/zabbix_server.log \
-     --sudo                 # опционально, см. ниже
+     --sudo                 # optional, see below
      --stats-port 10051     # default
-     # --no-stats           # отключить trapper-источник, если недоступен
+     # --no-stats           # disable trapper source if unavailable
 ```
 
-Все флаги дублируются переменными окружения: `ZTOP_HOST`, `ZTOP_LOG`,
+All flags are also available as environment variables: `ZTOP_HOST`, `ZTOP_LOG`,
 `ZTOP_SUDO`, `ZTOP_STATS_HOST`, `ZTOP_STATS_PORT`, `ZTOP_NO_STATS`,
 `ZTOP_CONFIG`, `ZTOP_DB_URL`, `ZTOP_DB_INSECURE_TLS`.
 
-**Multi-host через конфиг (v0.5a):**
+**Multi-host via config (v0.5a):**
 
-Создай `~/.config/ztop/hosts.toml` (или `--config <path>`):
+Create `~/.config/ztop/hosts.toml` (or `--config <path>`):
 
 ```toml
 [[host]]
@@ -101,7 +97,7 @@ db_url = "postgres://ztop_ro:secret@db-prod/zabbix?sslmode=require"
 [[host]]
 name = "staging"
 ssh = "ztop@zbx-stage.internal"
-no_stats = true     # trapper закрыт fw
+no_stats = true     # trapper is behind firewall
 
 [[host]]
 name = "dev"
@@ -110,36 +106,35 @@ log = "/srv/zabbix/log/server.log"
 db_url = "mysql://ztop_ro:secret@db-dev/zabbix"
 ```
 
-И просто `ztop` — конфиг подхватится из дефолтного пути. В UI появится
-таб **`0 Overview`** с health-светофором по всем хостам, под таблицей —
-**Fleet aggregate** (суммарный CPU/queue, max load, mem avg/max, общий
-счётчик диагнозов с выделением critical).
+Just run `ztop` — the config is picked up from the default path. The UI will show
+a **`0 Overview`** tab with a health indicator for all hosts, and a
+**Fleet aggregate** below the table (total CPU/queue, max load, mem avg/max, total
+diagnosis count with critical highlights).
 
-Переключение между хостами:
-- **Ctrl-N / Ctrl-P** — на любом табе, последовательный перебор.
-- На Overview — `↑`/`↓` (или `j`/`k`) двигают **курсор** (`▸`), **Enter**
-  ставит focused host (`●`) и сразу уходит на `1 Processes`.
-- **Ctrl-G** (v0.5c) — модал host picker с **fuzzy search** по имени и
-  ssh-таргету. Набирай несколько букв — список сужается. Полезно на 20+
-  хостах, где Ctrl-N/P перебирать долго. Например, на `prod` найдутся
-  все production-хосты с consecutive-бонусом за плотное совпадение.
+Switching between hosts:
+- **Ctrl-N / Ctrl-P** — from any tab, sequential cycling.
+- On Overview — `↑`/`↓` (or `j`/`k`) move the **cursor** (`▸`), **Enter**
+  sets the focused host (`●`) and immediately switches to `1 Processes`.
+- **Ctrl-G** (v0.5c) — modal host picker with **fuzzy search** by name and
+  SSH target. Type a few letters to narrow the list. Useful with 20+ hosts
+  where Ctrl-N/P cycling is slow. For example, `prod` will find all production
+  hosts with a consecutive-match bonus.
 
-Диагнозы накапливаются across the fleet с префиксом `[hostname]`, top-3
-most-severe видны над body независимо от текущего таба.
+Diagnoses accumulate across the fleet with a `[hostname]` prefix; the top-3
+most-severe are shown above the body regardless of the current tab.
 
-Поддерживается **zabbix_proxy** (v0.5b): прокси-специфичные роли
-(`data sender`, `heartbeat sender`, `vmware collector`) распознаются
-автоматически. В `hosts.toml` всё одинаково для server и proxy.
+**zabbix_proxy** is supported (v0.5b): proxy-specific roles
+(`data sender`, `heartbeat sender`, `vmware collector`) are recognized
+automatically. In `hosts.toml` the configuration is the same for server and proxy.
 
-## Синтетические пробы (v0.7)
+## Synthetic probes (v0.7)
 
-ztop умеет дёргать **дешёвые пробы с машины, где он запущен**: TCP-connect,
-DNS-resolve, PG `SELECT 1`. Цель — сразу видеть, лагает ли это **сеть с
-моего ноутбука** или реально болеет сервер/БД. Это четвёртый «слой
-живучести» — он самый ближний к человеку, не требует доступа к
-удалённому хосту.
+ztop can run **lightweight probes from the machine where it is running**: TCP-connect,
+DNS-resolve, PG `SELECT 1`. The goal is to immediately see whether latency is
+**on my laptop/network** or the server/DB is genuinely sick. This is the fourth
+"resilience layer" — the closest to the human, requires no access to the remote host.
 
-Добавь блоки `[[probe]]` в тот же `hosts.toml`:
+Add `[[probe]]` blocks to the same `hosts.toml`:
 
 ```toml
 [[probe]]
@@ -160,60 +155,57 @@ kind = "pg"
 url = "postgres://probe_ro:secret@db-prod-01/zabbix"
 ```
 
-В таб `6 Probes` появится таблица: name / kind / target / latency / status /
-success% / last error. Цветовая шкала latency: зелёный <100ms, жёлтый
-<1s, красный >1s. Пароли в URL маскируются `****` для безопасного
-отображения.
+Tab `6 Probes` shows a table: name / kind / target / latency / status /
+success% / last error. Latency color scale: green <100ms, yellow <1s, red >1s.
+Passwords in URLs are masked as `****` for safe display.
 
-Пробы — **opt-in**, без блоков `[[probe]]` ничего не пингуем (нельзя
-случайно DDoSнуть прод). PG-пробы используют ту же логику чтения
-паролей из `.pgpass`, что и основной DB-источник.
+Probes are **opt-in** — without `[[probe]]` blocks nothing is pinged
+(to avoid accidentally DDoSing production). PG probes use the same password
+reading logic from `.pgpass` as the main DB source.
 
-## Запись и воспроизведение (v0.6)
+## Record and replay (v0.6)
 
-Для постмортема инцидентов — пишем всю поступающую телеметрию в файл,
-потом проигрываем как live-сессию.
+For post-mortem analysis — record all incoming telemetry to a file,
+then replay it as a live session.
 
-**Записать инцидент:**
+**Record an incident:**
 
 ```
 ztop --record incident-2026-05-13.jsonl
 ```
 
-В шапке появится `● REC (N ev)` — счётчик записанных событий. Файл —
-JSON Lines, header первой строкой со списком хостов, дальше каждое
-сообщение коллектора с timestamp-ом.
+The header will show `● REC (N ev)` — a counter of recorded events. The file is
+JSON Lines, with a header on the first line containing the host list, followed by each
+collector message with a timestamp.
 
-**Проиграть запись:**
+**Replay a recording:**
 
 ```
 ztop --replay incident-2026-05-13.jsonl
-ztop --replay incident.jsonl --replay-speed 10    # в 10 раз быстрее
+ztop --replay incident.jsonl --replay-speed 10    # 10x faster
 ```
 
-Хосты восстанавливаются из header-а — `--host`/`--config` не нужны.
-В шапке `▶ REPLAY 45.2%` (прогресс). Runtime control (`R`, `+/-`, `c`,
-`h`, `d`) отключен, SSH-коннекты не открываются. Всё остальное работает:
-переключение табов, фокус хостов, фильтры лога, **алерт-аккорд
-диагнозов** — он построен поверх state и срабатывает точно так же, как
-был в записи. Можно перематывать инцидент и видеть, когда какой диагноз
-загорелся.
+Hosts are restored from the header — `--host`/`--config` are not needed.
+The header shows `▶ REPLAY 45.2%` (progress). Runtime control (`R`, `+/-`, `c`,
+`h`, `d`) is disabled; no SSH connections are opened. Everything else works:
+tab switching, host focus, log filters, and the **diagnose alert chord** —
+it is built on top of state and fires exactly as it did during recording.
+You can scrub through the incident and see when each diagnosis lit up.
 
-**Управление replay (v0.6.1):**
+**Replay controls (v0.6.1):**
 
-| Клавиша     | Действие |
-|-------------|----------|
+| Key         | Action |
+|-------------|--------|
 | `Space`     | Pause / resume |
-| `n`         | Step — один event вперёд (в paused) |
-| `>` или `.` | Seek 60 сек вперёд |
-| `<` или `,` | Seek 60 сек назад (сбрасывает state, перестраивается по новым событиям) |
+| `n`         | Step — one event forward (while paused) |
+| `>` or `.`  | Seek 60 seconds forward |
+| `<` or `,`  | Seek 60 seconds backward (resets state, rebuilds from new events) |
 
-При прыжке назад state хостов **сбрасывается** через синтетический
-`CollectorMsg::Reset` — иначе на экране были бы данные «из будущего»
-относительно нового положения курсора. По мере воспроизведения дальше
-state перестраивается естественно из событий.
+When seeking backward, host state is **reset** via a synthetic
+`CollectorMsg::Reset` — otherwise the screen would show data from the "future"
+relative to the new cursor position. State is then rebuilt naturally from events.
 
-**Формат файла** (JSON Lines):
+**File format** (JSON Lines):
 
 ```json
 {"kind":"header","version":"0.6","started_at":"2026-05-13T03:00:00Z","hosts":[...]}
@@ -221,110 +213,110 @@ state перестраивается естественно из событий.
 {"kind":"event","ts":"2026-05-13T03:14:23.450Z","host_idx":0,"msg":{"type":"LogStreamLine","raw":"...","level":"Error"}}
 ```
 
-Объём: при 3-host setup и умеренной активности — ~10-50 KB/sec, за
-час инцидента ~36-180 MB. Compaction отложен в v0.6.1.
+Size: with a 3-host setup and moderate activity — ~10–50 KB/sec,
+~36–180 MB for an hour-long incident. Compaction is deferred to v0.6.1.
 
-## Настройка zabbix.stats (TCP 10051)
+## Configuring zabbix.stats (TCP 10051)
 
-`zabbix_server.conf` должен разрешить IP, с которого ztop подключается:
+`zabbix_server.conf` must allow the IP from which ztop connects:
 
 ```
 StatsAllowedIP=10.0.0.1,192.168.0.0/24
-# или просто 127.0.0.1 если ztop запущен на той же машине
+# or just 127.0.0.1 if ztop runs on the same machine
 ```
 
-Это **бинарный Zabbix-протокол** на trapper-порту, не HTTP API. Никаких
-токенов — IP-ACL и всё. Работает, пока жив сам процесс `zabbix_server`,
-даже если PHP/Apache/БД упали.
+This is the **binary Zabbix protocol** on the trapper port, not the HTTP API.
+No tokens — IP-ACL only. Works as long as the `zabbix_server` process is alive,
+even if PHP/Apache/DB are down.
 
-Проверить руками: `echo '{"request":"zabbix.stats"}' | nc <host> 10051`
-(ответ будет с 13-байтовым ZBXD-header-ом, дальше JSON).
+Manual verification: `echo '{"request":"zabbix.stats"}' | nc <host> 10051`
+(the response has a 13-byte ZBXD header followed by JSON).
 
-## DB-скрейпер (PostgreSQL + MySQL/MariaDB)
+## DB scraper (PostgreSQL + MySQL/MariaDB)
 
-ztop ходит в БД напрямую и опрашивает 6 запросов: коннекты, top long
-queries, locks waiting, размеры zabbix-таблиц, replication lag, version.
+ztop connects to the database directly and runs 6 queries: connections, top long
+queries, lock waiters, Zabbix table sizes, replication lag, version.
 
-Backend выбирается по схеме URL:
-- `postgres://...` или `postgresql://...` → PostgreSQL (`tokio-postgres`)
+The backend is selected by URL scheme:
+- `postgres://...` or `postgresql://...` → PostgreSQL (`tokio-postgres`)
 - `mysql://...` → MySQL/MariaDB (`mysql_async`)
-- без схемы — default PG (libpq key=value тоже сюда)
+- no scheme → default PG (libpq key=value also works here)
 
-**Read-only роль обязательна.** На стороне PG создать так:
+**A read-only role is required.** To create it on PG:
 
 ```sql
 CREATE ROLE ztop_ro WITH LOGIN PASSWORD '<...>';
-GRANT pg_read_all_stats TO ztop_ro;       -- pg_stat_activity, pg_locks и т.д.
+GRANT pg_read_all_stats TO ztop_ro;       -- pg_stat_activity, pg_locks, etc.
 GRANT CONNECT ON DATABASE zabbix TO ztop_ro;
 GRANT USAGE  ON SCHEMA public TO ztop_ro;
--- Только для размеров таблиц (read метаданных):
+-- For table sizes (metadata read only):
 GRANT SELECT ON pg_catalog.pg_class      TO ztop_ro;
 GRANT SELECT ON pg_catalog.pg_namespace  TO ztop_ro;
 ```
 
-Запуск:
+Running:
 
 ```
 ztop --host zbx-prod-01 \
      --db-url 'postgres://ztop_ro:<pass>@db-host:5432/zabbix?sslmode=disable'
 ```
 
-Пароль из URL виден в `ps`/`/proc`. На проде лучше через env:
+The password in the URL is visible in `ps`/`/proc`. On production it is better to use an env var:
 
 ```
 export ZTOP_DB_URL='postgres://ztop_ro:<pass>@db-host:5432/zabbix'
 ztop --host zbx-prod-01
 ```
 
-Если PG недоступен (firewall, нет креды) — `--db-url` просто не передаётся,
-DB-таб покажет hint, остальные источники работают как раньше.
+If PG is unavailable (firewall, no credentials) — just omit `--db-url`;
+the DB tab will show a hint and all other sources continue as before.
 
 **MySQL/MariaDB read-only setup:**
 
 ```sql
 CREATE USER 'ztop_ro'@'%' IDENTIFIED BY '<...>';
 GRANT SELECT, PROCESS, REPLICATION CLIENT, REPLICATION SLAVE ADMIN ON *.* TO 'ztop_ro'@'%';
--- PROCESS нужен для information_schema.PROCESSLIST и .innodb_trx
--- REPLICATION CLIENT — для SHOW REPLICA STATUS
--- SELECT на information_schema и performance_schema даётся неявно
+-- PROCESS is needed for information_schema.PROCESSLIST and .innodb_trx
+-- REPLICATION CLIENT — for SHOW REPLICA STATUS
+-- SELECT on information_schema and performance_schema is granted implicitly
 FLUSH PRIVILEGES;
 ```
 
-Для `wait_event` нужен включённый performance_schema (обычно по умолчанию
-на MySQL 5.6+ и MariaDB 10.5+). Если выключен или нет SELECT-прав — ztop
-автоматически переключится на упрощённую PROCESSLIST без `wait_event`.
+`wait_event` requires `performance_schema` enabled (usually on by default
+on MySQL 5.6+ and MariaDB 10.5+). If disabled or SELECT rights are missing, ztop
+automatically falls back to a simplified PROCESSLIST without `wait_event`.
 
-Запуск с MySQL:
+Running with MySQL:
 
 ```
 ztop --host zbx-prod-01 \
      --db-url 'mysql://ztop_ro:<pass>@db-host:3306/zabbix?ssl-mode=REQUIRED'
 ```
 
-## TLS до БД (v0.4d)
+## TLS to the database (v0.4d)
 
-**PostgreSQL.** TLS-коннектор всегда подключён через `postgres-native-tls`,
-действие управляется параметром URL `sslmode=`:
-- `sslmode=disable` — TCP без TLS (по дефолту в URL без явного указания).
-- `sslmode=prefer` — TLS если сервер поддерживает, иначе plain (libpq default).
-- `sslmode=require` — TLS обязательно, верификация CA не требуется.
-- `sslmode=verify-ca`/`verify-full` — TLS + полная верификация.
+**PostgreSQL.** The TLS connector is always present via `postgres-native-tls`;
+behavior is controlled by the `sslmode=` URL parameter:
+- `sslmode=disable` — plain TCP (default for URLs without explicit mode).
+- `sslmode=prefer` — TLS if the server supports it, otherwise plain (libpq default).
+- `sslmode=require` — TLS mandatory, no CA verification required.
+- `sslmode=verify-ca`/`verify-full` — TLS + full verification.
 
-Для self-signed сертификатов или приватных CA на внутреннем периметре
-есть флаг `--db-insecure-tls` (env `ZTOP_DB_INSECURE_TLS=true`): принимает
-любой cert без верификации. **Не использовать на проде через WAN.**
+For self-signed certificates or private CAs on an internal perimeter,
+use `--db-insecure-tls` (env `ZTOP_DB_INSECURE_TLS=true`): accepts any cert
+without verification. **Do not use in production over WAN.**
 
-**MySQL.** TLS управляется параметрами URL через mysql_async:
-- `?ssl-mode=DISABLED` — без TLS
-- `?ssl-mode=REQUIRED` — TLS обязательно, без верификации CA
-- `?ssl-mode=VERIFY_CA`/`VERIFY_IDENTITY` — полная верификация
+**MySQL.** TLS is controlled via URL parameters through mysql_async:
+- `?ssl-mode=DISABLED` — no TLS
+- `?ssl-mode=REQUIRED` — TLS mandatory, no CA verification
+- `?ssl-mode=VERIFY_CA`/`VERIFY_IDENTITY` — full verification
 
-## Пароли из ~/.pgpass и ~/.my.cnf (v0.4d.1)
+## Passwords from ~/.pgpass and ~/.my.cnf (v0.4d.1)
 
-Если в `--db-url` пароль не указан (`postgres://user@host/db`), ztop
-читает пароль из стандартных libpq-/mysql-совместимых файлов.
+If the password is omitted from `--db-url` (`postgres://user@host/db`), ztop
+reads the password from standard libpq-/mysql-compatible files.
 
-**PostgreSQL — `~/.pgpass`** (или `$PGPASSFILE`):
+**PostgreSQL — `~/.pgpass`** (or `$PGPASSFILE`):
 
 ```
 # host:port:database:user:password
@@ -332,10 +324,10 @@ db-host:5432:zabbix:ztop_ro:s3cret
 *:5432:*:ztop_ro:fallback-password
 ```
 
-Правила libpq: файл должен иметь права `0600` (или `0400`), иначе игнор.
-Звёздочка `*` — wildcard. Backslash-escape для `:` и `\` в полях.
+libpq rules: the file must have `0600` (or `0400`) permissions, otherwise it is ignored.
+`*` is a wildcard. Backslash-escape `:` and `\` in fields.
 
-**MySQL — `~/.my.cnf`** секция `[client]`:
+**MySQL — `~/.my.cnf`** `[client]` section:
 
 ```ini
 [client]
@@ -345,25 +337,20 @@ host = db-host
 port = 3306
 ```
 
-Если в `[client]` указан `user` и он не совпадает с user в URL — пароль
-не подставляется (защита от случайного использования чужой identity).
+If `[client]` specifies a `user` that does not match the URL user, the password
+is not substituted (protection against accidentally using another identity).
 
-После обогащения URL передаётся в драйвер обычным путём. Если пароль
-из файла прочитать не удалось (нет файла, неверные права, нет матча) —
-URL отправляется как есть, и сервер вернёт auth error.
+After enrichment the URL is passed to the driver normally. If the password cannot
+be read from the file (missing file, wrong permissions, no match) — the URL is sent
+as-is and the server will return an auth error.
 
-Что **не делается** в v0.4c (отложено в v0.4d): TLS до PG/MySQL,
-`.pgpass`/`my.cnf` чтение паролей, persistent connection — уже сделано в
-v0.4b. Точный wait_event у MySQL через `performance_schema.events_waits_current` —
-v0.4c.1. idle-in-transaction для MySQL через `innodb_trx` — там же.
+## SSH configuration
 
-## Настройка SSH
+The prototype calls the system `ssh` — which means everything that already works in
+`~/.ssh/config` works here too: host aliases, ProxyJump, keys, agent.
 
-Прототип вызывает системный `ssh` — значит, всё, что у вас уже работает в
-`~/.ssh/config`, работает и здесь: alias-ы хостов, ProxyJump, ключи, агент.
-
-Рекомендуется добавить мультиплексирование в `~/.ssh/config`, чтобы повторные
-команды летели через один TCP-сокет (snappy refresh):
+It is recommended to add multiplexing to `~/.ssh/config` so repeated commands
+share one TCP socket (snappy refresh):
 
 ```sshconfig
 Host zbx-prod-01
@@ -374,67 +361,65 @@ Host zbx-prod-01
     ControlPersist 60s
 ```
 
-ztop сам прокидывает эти опции, но явное указание в config удобно для отладки.
+ztop passes these options itself, but an explicit entry in the config is convenient for debugging.
 
-## Права на runtime control
+## Runtime control permissions
 
-`zabbix_server -R` работает от любого пользователя, который может писать в
-runtime-сокет сервера — обычно это `zabbix` или `root`. Варианты:
+`zabbix_server -R` works for any user who can write to the server's runtime socket —
+typically `zabbix` or `root`. Options:
 
-1. **Логиниться по SSH под пользователем zabbix** — простейший вариант,
-   `--sudo` не нужен.
-2. **Логиниться под обычным пользователем + `--sudo`** — добавить sudoers:
+1. **SSH login as the zabbix user** — simplest option, `--sudo` is not needed.
+2. **Login as a regular user + `--sudo`** — add a sudoers entry:
    ```
    ztopuser ALL=(root) NOPASSWD: /usr/sbin/zabbix_server -R *
    ```
-   ztop вызывает `sudo -n` (без пароля), так что NOPASSWD обязателен.
+   ztop calls `sudo -n` (passwordless), so NOPASSWD is required.
 
-Для просмотра логов и `ps`/`/proc` обычно sudo не требуется.
+For viewing logs and `ps`/`/proc`, sudo is usually not needed.
 
-## Структура
+## Structure
 
 ```
 src/
   main.rs          — CLI, terminal setup, channel-based event loop
-  app.rs           — состояние, кольцевые буферы истории, apply_msg
-  source.rs        — per-collector tokio tasks с backoff + общий Notify
-  ssh.rs           — обёртка вокруг system ssh (tokio::process)
-  collectors.rs    — парсеры ps/loadavg/meminfo/uptime/logs + runtime control
-  zbxstats.rs      — бинарный Zabbix-протокол: framing + fetch_stats (v0.3)
+  app.rs           — state, ring buffers for history, apply_msg
+  source.rs        — per-collector tokio tasks with backoff + shared Notify
+  ssh.rs           — wrapper around system ssh (tokio::process)
+  collectors.rs    — parsers for ps/loadavg/meminfo/uptime/logs + runtime control
+  zbxstats.rs      — binary Zabbix protocol: framing + fetch_stats (v0.3)
   db.rs            — PG + MySQL backends: DbBackend enum, TLS (v0.4/v0.4b-d)
-  dbcreds.rs       — pgpass / my.cnf чтение паролей (v0.4d.1)
-  diagnose.rs      — cross-source правила: пересечения сигналов (v0.4b)
-  hosts.rs         — TOML-конфиг multi-host (v0.5a)
-  record.rs        — запись и replay телеметрии в JSONL (v0.6/v0.6.1)
-  probes.rs        — синтетические пробы TCP/DNS/PG (v0.7)
-  ui.rs            — ratatui-рендеринг (header, tabs, табы, модал, overview)
+  dbcreds.rs       — pgpass / my.cnf password reading (v0.4d.1)
+  diagnose.rs      — cross-source rules: signal intersections (v0.4b)
+  hosts.rs         — TOML config for multi-host (v0.5a)
+  record.rs        — record and replay telemetry as JSONL (v0.6/v0.6.1)
+  probes.rs        — synthetic TCP/DNS/PG probes (v0.7)
+  ui.rs            — ratatui rendering (header, tabs, panels, modal, overview)
 ```
 
-**Архитектура опроса (v0.2a+b).** Каждый коллектор живёт в своей
-`tokio::spawn`-задаче, отправляет результаты в общий `mpsc`-канал.
-Event-loop обновляет state по приходу сообщений + рисует экран ещё и по
-UI-тикеру (для декая toast и пересчёта STALE-таймеров).
+**Polling architecture (v0.2a+b).** Each collector lives in its own
+`tokio::spawn` task and sends results to a shared `mpsc` channel.
+The event loop updates state on incoming messages and also redraws the screen
+on a UI ticker (for toast decay and STALE timer recalculation).
 
-- **Procs/Sys (periodic)** — каждые 2 сек дёргают `ssh ... 'cmd'`, на ошибках
-  делают экспоненциальный backoff (cap 30s).
-- **Logs (streaming, v0.2b)** — один long-lived ssh-процесс с `tail -n N -F`,
-  построчно отдаёт строки в канал. Reconnect с backoff при EOF/ошибке.
-- **Force-refresh `r`** — общий `Notify` будит все periodic-задачи сразу.
-- **Force-reconnect `L`** — отдельный Notify для перезапуска стрима логов.
+- **Procs/Sys (periodic)** — every 2 seconds, runs `ssh ... 'cmd'`; errors trigger
+  exponential backoff (capped at 30s).
+- **Logs (streaming, v0.2b)** — one long-lived SSH process with `tail -n N -F`,
+  delivers lines to the channel one at a time. Reconnects with backoff on EOF/error.
+- **Force-refresh `r`** — a shared `Notify` wakes all periodic tasks immediately.
+- **Force-reconnect `L`** — a separate Notify to restart the log stream.
 
-Unit-тесты парсеров: `cargo test`.
+Unit tests for parsers: `cargo test`.
 
-## Что в планах после MVP
+## Post-MVP plans
 
-1. **Стрим логов через одну долгую SSH-сессию** (`russh` + `tail -F`), чтобы не
-   опрашивать поллингом.
-2. **Diaginfo → структурированные блоки**: запустить `zabbix_server -R
-   diaginfo`, дождаться записи в log, распарсить секции historycache /
-   valuecache / preprocessing и показать их в отдельной панели.
-3. **Multi-host** — отдельная вкладка с несколькими Zabbix-серверами.
-4. **Очередь** — `zabbix_get`/SQL/`zabbix_server -R diaginfo` для размера
-   очереди по prefer-зонам, отдельный график.
-5. **Кэширование результатов на диск** для post-mortem (CSV/JSONL `--record`).
-6. **Прокси-форки** — расширить парсер на `zabbix_proxy:` (тот же proctitle).
-7. **TLS-status/DB latency** — простые синтетические пробы (`time psql -c ...`,
-   `nc -z`) для гипотезы «база тупит».
+1. **Log stream over one long SSH session** (`russh` + `tail -F`) to avoid polling.
+2. **Diaginfo → structured blocks**: run `zabbix_server -R diaginfo`, wait for the
+   log entry, parse historycache / valuecache / preprocessing sections and show
+   them in a dedicated panel.
+3. **Multi-host** — a separate tab with multiple Zabbix servers.
+4. **Queue** — `zabbix_get`/SQL/`zabbix_server -R diaginfo` for queue size by prefer
+   zones, separate graph.
+5. **On-disk result caching** for post-mortem (CSV/JSONL `--record`).
+6. **Proxy forks** — extend the parser for `zabbix_proxy:` (same proctitle format).
+7. **TLS-status/DB latency** — simple synthetic probes (`time psql -c ...`, `nc -z`)
+   to test the hypothesis "the DB is slow".
