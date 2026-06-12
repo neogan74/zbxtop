@@ -155,7 +155,10 @@ async fn run_probe(cfg: &ProbeConfig, deadline: Duration) -> Result<Duration> {
         "tcp" => run_tcp(cfg.target.as_deref(), deadline).await,
         "dns" => run_dns(cfg.target.as_deref(), deadline).await,
         "pg" => run_pg(cfg.url.as_deref(), deadline).await,
-        other => Err(anyhow!("unknown probe kind '{}': expected tcp/dns/pg", other)),
+        other => Err(anyhow!(
+            "unknown probe kind '{}': expected tcp/dns/pg",
+            other
+        )),
     }
 }
 

@@ -133,10 +133,7 @@ fn rule_idle_in_tx_zombie(app: &HostState) -> Option<Diagnosis> {
     if zombies.is_empty() {
         return None;
     }
-    let max_age = zombies
-        .iter()
-        .map(|q| q.age_sec)
-        .fold(0.0_f64, f64::max);
+    let max_age = zombies.iter().map(|q| q.age_sec).fold(0.0_f64, f64::max);
     let sev = if max_age >= 600.0 {
         Severity::Critical
     } else {
@@ -198,12 +195,7 @@ fn rule_busy_cpu_delta(app: &HostState) -> Option<Diagnosis> {
         };
         if let Some(p) = stats.process.get(&r.role) {
             let delta = p.busy.avg - busy_ps;
-            if delta >= 30.0
-                && worst
-                    .as_ref()
-                    .map(|w| delta > w.1)
-                    .unwrap_or(true)
-            {
+            if delta >= 30.0 && worst.as_ref().map(|w| delta > w.1).unwrap_or(true) {
                 worst = Some((r.role.clone(), delta));
             }
         }
@@ -375,14 +367,7 @@ mod tests {
         db: Option<DbStats>,
         roles: Vec<ZbxRoleAgg>,
     ) -> HostState {
-        let mut h = HostState::new(
-            "h".into(),
-            "h".into(),
-            "/log".into(),
-            false,
-            true,
-            true,
-        );
+        let mut h = HostState::new("h".into(), "h".into(), "/log".into(), false, true, true);
         h.stats = stats;
         h.db = db;
         h.roles = roles;
@@ -413,7 +398,7 @@ mod tests {
             age_sec: 5.0,
             query: "INSERT INTO history VALUES (...)".into(),
         });
-        let host =host_with(Some(s), Some(d), vec![]);
+        let host = host_with(Some(s), Some(d), vec![]);
         let diag = diagnose(&host);
         assert!(diag.iter().any(|x| x.title.contains("history not landing")));
     }
@@ -429,9 +414,12 @@ mod tests {
             age_sec: 700.0,
             query: "...".into(),
         });
-        let host =host_with(None, Some(d), vec![]);
+        let host = host_with(None, Some(d), vec![]);
         let diag = diagnose(&host);
-        let z = diag.iter().find(|x| x.title.contains("idle-in-transaction")).unwrap();
+        let z = diag
+            .iter()
+            .find(|x| x.title.contains("idle-in-transaction"))
+            .unwrap();
         assert_eq!(z.severity, Severity::Critical);
     }
 
@@ -447,7 +435,7 @@ mod tests {
             rss_sum_kb: 0,
             sample_status: String::new(),
         };
-        let host =host_with(Some(s), None, vec![role]);
+        let host = host_with(Some(s), None, vec![role]);
         let diag = diagnose(&host);
         assert!(diag.iter().any(|x| x.title.contains("poller waiting")));
     }
@@ -459,7 +447,10 @@ mod tests {
         s.wcache = serde_json::json!({"pfree": 3.0});
         let host = host_with(Some(s), None, vec![]);
         let diag = diagnose(&host);
-        let d = diag.iter().find(|x| x.title.contains("write cache full")).unwrap();
+        let d = diag
+            .iter()
+            .find(|x| x.title.contains("write cache full"))
+            .unwrap();
         assert_eq!(d.severity, Severity::Warning);
     }
 
@@ -469,7 +460,10 @@ mod tests {
         s.vcache = serde_json::json!({"buffer": {"pfree": 0.5}});
         let host = host_with(Some(s), None, vec![]);
         let diag = diagnose(&host);
-        let d = diag.iter().find(|x| x.title.contains("value cache full")).unwrap();
+        let d = diag
+            .iter()
+            .find(|x| x.title.contains("value cache full"))
+            .unwrap();
         assert_eq!(d.severity, Severity::Critical);
     }
 
@@ -492,7 +486,9 @@ mod tests {
         d.connections.idle_in_transaction = 0;
         d.locks_waiting = 0;
         let host = host_with(Some(s), Some(d), vec![]);
-        assert!(!diagnose(&host).iter().any(|x| x.title == "housekeeper blocked"));
+        assert!(!diagnose(&host)
+            .iter()
+            .any(|x| x.title == "housekeeper blocked"));
     }
 
     #[test]
@@ -511,7 +507,9 @@ mod tests {
         s.process.insert("trapper".into(), proc(90.0, 5));
         s.queue = serde_json::json!(100u64);
         let host = host_with(Some(s), None, vec![]);
-        assert!(!diagnose(&host).iter().any(|x| x.title == "trapper saturated"));
+        assert!(!diagnose(&host)
+            .iter()
+            .any(|x| x.title == "trapper saturated"));
     }
 
     #[test]
@@ -540,7 +538,7 @@ mod tests {
         let mut d = DbStats::default();
         d.connections.idle = 5;
         d.replication_lag_sec = Some(0.1);
-        let host =host_with(Some(s), Some(d), vec![]);
+        let host = host_with(Some(s), Some(d), vec![]);
         assert!(diagnose(&host).is_empty());
     }
 }

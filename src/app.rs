@@ -230,8 +230,7 @@ impl HostState {
             }
             CollectorMsg::LogStreamStatus(status) => {
                 self.log_stream.connected = status.connected;
-                self.log_stream.reconnects =
-                    self.log_stream.reconnects.max(status.reconnects);
+                self.log_stream.reconnects = self.log_stream.reconnects.max(status.reconnects);
                 self.log_stream.last_error = status.last_error.clone();
 
                 if status.connected {
@@ -402,12 +401,9 @@ impl App {
     }
 }
 
-/// v0.5c: fuzzy subsequence match. Returns a score (higher is better)
-/// or None if the query is not a subsequence of the target at all.
-///
-/// Score = base points for each match + bonus for consecutive runs
-/// + bonus for a match at the start. This gives sensible ranking: "prod"
-/// matches "zbx-prod-01" more strongly than widely scattered "p-r-o-d".
+/// Fuzzy subsequence match. Returns a score (higher is better) or None if
+/// the query is not a subsequence of the target. Score = base points per
+/// match + bonus for consecutive runs + bonus for start-of-string match.
 pub fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
     if query.is_empty() {
         return Some(0);

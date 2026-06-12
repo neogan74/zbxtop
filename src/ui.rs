@@ -4,19 +4,20 @@ use crate::app::{App, Tab};
 use crate::collectors::LogLevel;
 use crate::diagnose::{diagnose, Diagnosis, Severity};
 use crate::source::{SourceKind, SourceState};
-use std::time::Duration;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Clear, Gauge, List, ListItem, Paragraph, Row, Sparkline, Table, Wrap},
+    widgets::{
+        Block, Borders, Cell, Clear, Gauge, List, ListItem, Paragraph, Row, Sparkline, Table, Wrap,
+    },
     Frame,
 };
+use std::time::Duration;
 
 pub fn draw(f: &mut Frame, app: &App) {
     // Compute diagnoses once per frame; reused by header banner, overview table, and aggregate.
-    let per_host_diagnoses: Vec<Vec<Diagnosis>> =
-        app.hosts.iter().map(diagnose).collect();
+    let per_host_diagnoses: Vec<Vec<Diagnosis>> = app.hosts.iter().map(diagnose).collect();
 
     // Cross-source diagnoses for all hosts, prefixed with [name]. We show
     // at most 3 — the most severe. Row height is dynamic.
@@ -85,8 +86,13 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let uptime = humanize_uptime(host.sys.uptime_sec);
     let pause = if app.paused { " [PAUSED]" } else { "" };
     let mode_badge: Option<(String, Color)> = if app.is_replay {
-        let pct = app.replay_progress.load(std::sync::atomic::Ordering::Relaxed) as f32 / 10.0;
-        let replay_paused = app.replay_paused_flag.load(std::sync::atomic::Ordering::Relaxed);
+        let pct = app
+            .replay_progress
+            .load(std::sync::atomic::Ordering::Relaxed) as f32
+            / 10.0;
+        let replay_paused = app
+            .replay_paused_flag
+            .load(std::sync::atomic::Ordering::Relaxed);
         let marker = if replay_paused { "⏸ " } else { "▶ " };
         let pause_tag = if replay_paused { " [PAUSED]" } else { "" };
         Some((
@@ -94,10 +100,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
             Color::Blue,
         ))
     } else if app.recorded_events > 0 {
-        Some((
-            format!("● REC ({} ev)", app.recorded_events),
-            Color::Red,
-        ))
+        Some((format!("● REC ({} ev)", app.recorded_events), Color::Red))
     } else {
         None
     };
@@ -105,13 +108,18 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     let line1 = Line::from(vec![
         Span::styled(
             "ztop ",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw("@ "),
         Span::styled(&host.name, Style::default().fg(Color::Yellow)),
         Span::raw("   load "),
         Span::styled(
-            format!("{:.2} {:.2} {:.2}", host.sys.load1, host.sys.load5, host.sys.load15),
+            format!(
+                "{:.2} {:.2} {:.2}",
+                host.sys.load1, host.sys.load5, host.sys.load15
+            ),
             Style::default().fg(load_color(host.sys.load1)),
         ),
         Span::raw("   mem "),
@@ -295,11 +303,7 @@ fn log_badge(app: &App) -> (&'static str, Color, String) {
         } else {
             String::new()
         };
-        (
-            "●",
-            Color::Green,
-            format!("streaming, {last_line}{reconn}"),
-        )
+        ("●", Color::Green, format!("streaming, {last_line}{reconn}"))
     } else if ls.reconnects == 0 {
         // not yet connected
         ("○", Color::Yellow, "connecting…".to_string())
@@ -331,9 +335,9 @@ fn draw_diagnoses(
 
     for (idx, d) in diagnoses.iter().enumerate() {
         let (tag, fg, bg) = match d.severity {
-            Severity::Critical => ("CRIT", Color::White,       Color::Rgb(90, 20, 20)),
-            Severity::Warning  => ("WARN", Color::Rgb(255,220,0), Color::Rgb(60, 50, 10)),
-            Severity::Info     => ("INFO", Color::Cyan,         Color::Rgb(10, 40, 60)),
+            Severity::Critical => ("CRIT", Color::White, Color::Rgb(90, 20, 20)),
+            Severity::Warning => ("WARN", Color::Rgb(255, 220, 0), Color::Rgb(60, 50, 10)),
+            Severity::Info => ("INFO", Color::Cyan, Color::Rgb(10, 40, 60)),
         };
 
         let sources = format!("  ({})", d.sources.join("+"));
@@ -463,7 +467,9 @@ fn draw_overview_table(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], a
                     SourceKind::Db => h.db_enabled,
                     _ => true,
                 };
-                enabled && h.source(**k).last_ok.is_some() && !h.source(**k).is_stale(Duration::from_secs(15))
+                enabled
+                    && h.source(**k).last_ok.is_some()
+                    && !h.source(**k).is_stale(Duration::from_secs(15))
             })
             .count();
             let (sym, sym_color) = if healthy == total {
@@ -509,13 +515,13 @@ fn draw_overview_table(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], a
                 Cell::from(h.ssh_host.clone()).style(Style::default().fg(Color::DarkGray)),
                 Cell::from(format!("{:>5.1}", cpu_sum))
                     .style(Style::default().fg(pct_color(cpu_sum as f32))),
-                Cell::from(format!("{:>4.0}%", mem))
-                    .style(Style::default().fg(pct_color(mem))),
-                Cell::from(format!("{:>5.2}", load))
-                    .style(Style::default().fg(load_color(load))),
+                Cell::from(format!("{:>4.0}%", mem)).style(Style::default().fg(pct_color(mem))),
+                Cell::from(format!("{:>5.2}", load)).style(Style::default().fg(load_color(load))),
                 Cell::from(queue),
                 {
-                    let has_crit = diagnoses[i].iter().any(|d| d.severity == Severity::Critical);
+                    let has_crit = diagnoses[i]
+                        .iter()
+                        .any(|d| d.severity == Severity::Critical);
                     let (label, color) = if diag_count == 0 {
                         ("✓".into(), Color::Green)
                     } else if has_crit {
@@ -542,13 +548,12 @@ fn draw_overview_table(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>], a
         Constraint::Length(5),
         Constraint::Length(9),
     ];
-    let table = Table::new(rows, widths)
-        .header(header)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(format!(" Hosts  ({}) — Ctrl-N/P switch focus ", app.hosts.len())),
-        );
+    let table = Table::new(rows, widths).header(header).block(
+        Block::default().borders(Borders::ALL).title(format!(
+            " Hosts  ({}) — Ctrl-N/P switch focus ",
+            app.hosts.len()
+        )),
+    );
     f.render_widget(table, area);
 }
 
@@ -592,7 +597,9 @@ fn draw_overview_aggregate(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>
         .hosts
         .iter()
         .filter(|h| {
-            let stale = h.source(SourceKind::Procs).is_stale(Duration::from_secs(15));
+            let stale = h
+                .source(SourceKind::Procs)
+                .is_stale(Duration::from_secs(15));
             !stale
         })
         .count();
@@ -601,11 +608,13 @@ fn draw_overview_aggregate(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>
         Span::raw("Fleet "),
         Span::styled(
             format!("{}/{}", healthy, app.hosts.len()),
-            Style::default().fg(if healthy == app.hosts.len() {
-                Color::Green
-            } else {
-                Color::Yellow
-            }).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(if healthy == app.hosts.len() {
+                    Color::Green
+                } else {
+                    Color::Yellow
+                })
+                .add_modifier(Modifier::BOLD),
         ),
         Span::raw(" healthy   "),
         Span::raw("Σ CPU "),
@@ -639,13 +648,15 @@ fn draw_overview_aggregate(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>
         Span::raw("   diagnoses "),
         Span::styled(
             total_diag.to_string(),
-            Style::default().fg(if critical_diag > 0 {
-                Color::Red
-            } else if total_diag > 0 {
-                Color::Yellow
-            } else {
-                Color::Green
-            }).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(if critical_diag > 0 {
+                    Color::Red
+                } else if total_diag > 0 {
+                    Color::Yellow
+                } else {
+                    Color::Green
+                })
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             if critical_diag > 0 {
@@ -655,7 +666,11 @@ fn draw_overview_aggregate(f: &mut Frame, app: &App, diagnoses: &[Vec<Diagnosis>
             } else {
                 "  (all clear)".to_string()
             },
-            Style::default().fg(if critical_diag > 0 { Color::Red } else { Color::DarkGray }),
+            Style::default().fg(if critical_diag > 0 {
+                Color::Red
+            } else {
+                Color::DarkGray
+            }),
         ),
     ]);
 
@@ -680,11 +695,11 @@ fn draw_processes(f: &mut Frame, app: &App, area: Rect) {
     let header = Row::new(vec![
         Cell::from("Role"),
         Cell::from("Cnt"),
-        Cell::from("CPU%"),     // from ps (what actually consumes CPU)
+        Cell::from("CPU%"), // from ps (what actually consumes CPU)
         Cell::from("RSS"),
-        Cell::from("BusyPs"),   // % of forks not idle right now (from proctitle)
-        Cell::from("BusyZbx"),  // busy.avg from zabbix.stats — what the server reports itself
-        Cell::from("Δ"),        // difference BusyZbx - BusyPs (positive = waiting)
+        Cell::from("BusyPs"),  // % of forks not idle right now (from proctitle)
+        Cell::from("BusyZbx"), // busy.avg from zabbix.stats — what the server reports itself
+        Cell::from("Δ"),       // difference BusyZbx - BusyPs (positive = waiting)
         Cell::from("Sample status"),
     ])
     .style(Style::default().add_modifier(Modifier::BOLD));
@@ -749,9 +764,11 @@ fn draw_processes(f: &mut Frame, app: &App, area: Rect) {
         Constraint::Min(20),
     ];
 
-    let table = Table::new(rows, widths)
-        .header(header)
-        .block(Block::default().borders(Borders::ALL).title(" Roles  (ps vs zabbix.stats) "));
+    let table = Table::new(rows, widths).header(header).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Roles  (ps vs zabbix.stats) "),
+    );
     f.render_widget(table, layout[0]);
 
     // Right column: sparkline charts
@@ -807,15 +824,40 @@ fn draw_sparklines(f: &mut Frame, app: &App, area: Rect) {
         ])
         .split(area);
 
-    draw_sparkline(f, chunks[0], " CPU sum % ", &host.history.cpu_total, 100.0, Color::Cyan);
-    draw_sparkline(f, chunks[1], " Mem % ", &host.history.mem_used_pct, 100.0, Color::Green);
-    draw_sparkline(f, chunks[2], " Load 1m ", &host.history.load1, 8.0, Color::Yellow);
+    draw_sparkline(
+        f,
+        chunks[0],
+        " CPU sum % ",
+        &host.history.cpu_total,
+        100.0,
+        Color::Cyan,
+    );
+    draw_sparkline(
+        f,
+        chunks[1],
+        " Mem % ",
+        &host.history.mem_used_pct,
+        100.0,
+        Color::Green,
+    );
+    draw_sparkline(
+        f,
+        chunks[2],
+        " Load 1m ",
+        &host.history.load1,
+        8.0,
+        Color::Yellow,
+    );
 
     // Bottom — instant-value gauges
     let g_area = chunks[3];
     let gauges = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
         .split(g_area);
 
     let cpu = (host.cpu_sum().clamp(0.0, 100.0) / 100.0 * 100.0) as u16;
@@ -913,10 +955,7 @@ fn draw_internals(f: &mut Frame, app: &App, area: Rect) {
             Span::raw("")
         },
         if let Some(v) = stats.vps_total() {
-            Span::styled(
-                format!("   vps {:.0}", v),
-                Style::default().fg(Color::Cyan),
-            )
+            Span::styled(format!("   vps {:.0}", v), Style::default().fg(Color::Cyan))
         } else {
             Span::raw("")
         },
@@ -934,13 +973,15 @@ fn draw_internals(f: &mut Frame, app: &App, area: Rect) {
     ])
     .style(Style::default().add_modifier(Modifier::BOLD));
 
-    let mut rows: Vec<(String, &crate::zbxstats::ProcessStats)> = stats
-        .process
-        .iter()
-        .map(|(k, v)| (k.clone(), v))
-        .collect();
+    let mut rows: Vec<(String, &crate::zbxstats::ProcessStats)> =
+        stats.process.iter().map(|(k, v)| (k.clone(), v)).collect();
     // Sort by busy.avg descending — hottest processes at the top.
-    rows.sort_by(|a, b| b.1.busy.avg.partial_cmp(&a.1.busy.avg).unwrap_or(std::cmp::Ordering::Equal));
+    rows.sort_by(|a, b| {
+        b.1.busy
+            .avg
+            .partial_cmp(&a.1.busy.avg)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let body: Vec<Row> = rows
         .iter()
@@ -1079,8 +1120,7 @@ fn draw_probes(f: &mut Frame, app: &App, area: Rect) {
                 .unwrap_or_default();
 
             Row::new(vec![
-                Cell::from(p.name.clone())
-                    .style(Style::default().add_modifier(Modifier::BOLD)),
+                Cell::from(p.name.clone()).style(Style::default().add_modifier(Modifier::BOLD)),
                 Cell::from(p.kind.clone()).style(Style::default().fg(Color::Cyan)),
                 Cell::from(short_one_line(&p.target_display, 40))
                     .style(Style::default().fg(Color::DarkGray)),
@@ -1229,8 +1269,7 @@ fn draw_database(f: &mut Frame, app: &App, area: Rect) {
             };
             Row::new(vec![
                 Cell::from(q.pid.to_string()),
-                Cell::from(format!("{:>6.1}s", q.age_sec))
-                    .style(Style::default().fg(age_color)),
+                Cell::from(format!("{:>6.1}s", q.age_sec)).style(Style::default().fg(age_color)),
                 Cell::from(q.state.clone()),
                 Cell::from(q.wait_event.clone().unwrap_or_default())
                     .style(Style::default().fg(Color::Magenta)),
@@ -1265,8 +1304,7 @@ fn draw_database(f: &mut Frame, app: &App, area: Rect) {
         let bar = "█".repeat(bar_len);
         t_rows.push(Row::new(vec![
             Cell::from(t.name.clone()),
-            Cell::from(t.pretty.clone())
-                .style(Style::default().add_modifier(Modifier::BOLD)),
+            Cell::from(t.pretty.clone()).style(Style::default().add_modifier(Modifier::BOLD)),
             Cell::from(bar).style(Style::default().fg(Color::Cyan)),
         ]));
     }
@@ -1397,7 +1435,11 @@ fn draw_runtime_modal(f: &mut Frame, app: &App) {
         .iter()
         .enumerate()
         .map(|(i, c)| {
-            let marker = if i == app.runtime_cursor { "▶ " } else { "  " };
+            let marker = if i == app.runtime_cursor {
+                "▶ "
+            } else {
+                "  "
+            };
             let style = if i == app.runtime_cursor {
                 Style::default()
                     .fg(Color::Black)

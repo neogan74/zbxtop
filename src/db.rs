@@ -182,9 +182,7 @@ impl PgConnection {
             builder.danger_accept_invalid_certs(true);
             builder.danger_accept_invalid_hostnames(true);
         }
-        let tls = MakeTlsConnector::new(
-            builder.build().context("build TLS connector")?,
-        );
+        let tls = MakeTlsConnector::new(builder.build().context("build TLS connector")?);
 
         let (client, connection) =
             timeout(target.timeout, tokio_postgres::connect(&target.url, tls))
@@ -288,9 +286,7 @@ impl MyConnection {
         ";
         let rows_with_event = self
             .conn
-            .query::<(u32, String, String, String, u64, Option<String>, String), _>(
-                top_q_with_perf,
-            )
+            .query::<(u32, String, String, String, u64, Option<String>, String), _>(top_q_with_perf)
             .await;
         if let Ok(rows) = rows_with_event {
             stats.top_queries = rows
@@ -376,8 +372,7 @@ impl MyConnection {
             stats.connections.idle_in_transaction = idle_in_tx;
             // PROCESSLIST shows these connections as COMMAND=Sleep, so they are
             // already counted in idle. Subtract to avoid double-counting.
-            stats.connections.idle =
-                stats.connections.idle.saturating_sub(idle_in_tx);
+            stats.connections.idle = stats.connections.idle.saturating_sub(idle_in_tx);
 
             // Zombies >= 60s → synthesize a LongQuery so the alert rule
             // rule_idle_in_tx_zombie fires (it looks for state="idle in transaction").
@@ -457,7 +452,9 @@ impl DbBackend {
     pub async fn connect(target: &DbTarget) -> Result<Self> {
         let url = target.url.as_str();
         if url.starts_with("mysql://") {
-            Ok(Self::Mysql(MyConnection::connect(url, target.timeout).await?))
+            Ok(Self::Mysql(
+                MyConnection::connect(url, target.timeout).await?,
+            ))
         } else if url.starts_with("postgres://") || url.starts_with("postgresql://") {
             Ok(Self::Postgres(PgConnection::connect(target).await?))
         } else {

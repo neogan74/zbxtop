@@ -52,7 +52,12 @@ struct Cli {
     #[arg(short = 'C', long, env = "ZTOP_CONFIG")]
     config: Option<PathBuf>,
 
-    #[arg(short = 'l', long, env = "ZTOP_LOG", default_value = "/var/log/zabbix/zabbix_server.log")]
+    #[arg(
+        short = 'l',
+        long,
+        env = "ZTOP_LOG",
+        default_value = "/var/log/zabbix/zabbix_server.log"
+    )]
     log: String,
 
     #[arg(long, env = "ZTOP_SUDO", default_value_t = false)]
@@ -215,9 +220,7 @@ async fn main() -> Result<()> {
 
 /// Resolves the final (`HostConfig`, `ProbeConfig`) list respecting priority:
 /// --config (explicit) > default hosts.toml > CLI single-host.
-fn resolve_full_config(
-    cli: &Cli,
-) -> Result<(Vec<HostConfig>, Vec<probes::ProbeConfig>)> {
+fn resolve_full_config(cli: &Cli) -> Result<(Vec<HostConfig>, Vec<probes::ProbeConfig>)> {
     // Explicit --config.
     if let Some(path) = &cli.config {
         let cfg = HostsConfig::load_from(path)?;
@@ -303,7 +306,15 @@ async fn run_app<B: ratatui::backend::Backend>(
         let paused_flag = app.replay_paused_flag.clone();
         let tx_replay = tx.clone();
         tokio::spawn(async move {
-            let _ = record::replay_loop(events, tx_replay, cmd_rx, replay_speed, progress, paused_flag).await;
+            let _ = record::replay_loop(
+                events,
+                tx_replay,
+                cmd_rx,
+                replay_speed,
+                progress,
+                paused_flag,
+            )
+            .await;
         });
         None
     } else {
@@ -434,7 +445,11 @@ async fn handle_key(
             use crate::record::ReplayCmd;
             let cmd = match key.code {
                 KeyCode::Char(' ') => Some(ReplayCmd::TogglePause),
-                KeyCode::Char('n') if app.replay_paused_flag.load(std::sync::atomic::Ordering::Relaxed) => {
+                KeyCode::Char('n')
+                    if app
+                        .replay_paused_flag
+                        .load(std::sync::atomic::Ordering::Relaxed) =>
+                {
                     Some(ReplayCmd::Step)
                 }
                 KeyCode::Char('>') | KeyCode::Char('.') => {
@@ -578,10 +593,16 @@ async fn execute_runtime(app: &mut App, cmd: RuntimeCmd) {
     match runtime_control(&target, use_sudo, cmd).await {
         Ok(out) => {
             let snippet = out.lines().next().unwrap_or("").to_string();
-            app.set_toast(format!("[{}] {}: {}", host_name, cmd.label(), snippet), false);
+            app.set_toast(
+                format!("[{}] {}: {}", host_name, cmd.label(), snippet),
+                false,
+            );
         }
         Err(e) => {
-            app.set_toast(format!("[{}] {} failed: {}", host_name, cmd.label(), e), true);
+            app.set_toast(
+                format!("[{}] {} failed: {}", host_name, cmd.label(), e),
+                true,
+            );
         }
     }
 }
