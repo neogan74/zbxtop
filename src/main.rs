@@ -256,6 +256,7 @@ fn strip_user(ssh: &str) -> &str {
     ssh.split_once('@').map(|(_, h)| h).unwrap_or(ssh)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     app: &mut App,

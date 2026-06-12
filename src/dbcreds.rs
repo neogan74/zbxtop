@@ -99,7 +99,7 @@ impl ParsedUrl {
 fn parse_db_url(url: &str) -> Option<ParsedUrl> {
     let (scheme, rest) = url.split_once("://")?;
     // Split into authority and path?query: find the first '/' or '?'.
-    let (authority, tail) = match rest.find(|c| c == '/' || c == '?') {
+    let (authority, tail) = match rest.find(['/', '?']) {
         Some(i) => (&rest[..i], &rest[i..]),
         None => (rest, ""),
     };

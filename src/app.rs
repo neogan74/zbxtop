@@ -33,6 +33,7 @@ pub struct History {
     pub cpu_total: VecDeque<f64>,
     pub mem_used_pct: VecDeque<f64>,
     pub load1: VecDeque<f64>,
+    #[allow(dead_code)]
     pub queue_proxy: VecDeque<f64>,
 }
 
@@ -406,7 +407,7 @@ impl App {
 ///
 /// Score = base points for each match + bonus for consecutive runs
 /// + bonus for a match at the start. This gives sensible ranking: "prod"
-/// matches "zbx-prod-01" more strongly than widely scattered "p…r…o…d".
+/// matches "zbx-prod-01" more strongly than widely scattered "p-r-o-d".
 pub fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
     if query.is_empty() {
         return Some(0);
@@ -487,6 +488,7 @@ impl App {
     pub fn focused(&self) -> &HostState {
         &self.hosts[self.focused_host]
     }
+    #[allow(dead_code)]
     pub fn focused_mut(&mut self) -> &mut HostState {
         &mut self.hosts[self.focused_host]
     }

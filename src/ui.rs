@@ -16,7 +16,7 @@ use ratatui::{
 pub fn draw(f: &mut Frame, app: &App) {
     // Compute diagnoses once per frame; reused by header banner, overview table, and aggregate.
     let per_host_diagnoses: Vec<Vec<Diagnosis>> =
-        app.hosts.iter().map(|h| diagnose(h)).collect();
+        app.hosts.iter().map(diagnose).collect();
 
     // Cross-source diagnoses for all hosts, prefixed with [name]. We show
     // at most 3 — the most severe. Row height is dynamic.
@@ -731,7 +731,7 @@ fn draw_processes(f: &mut Frame, app: &App, area: Rect) {
                         .map(|d| format!("{:>+4.0}", d))
                         .unwrap_or_else(|| " —".into()),
                 )
-                .style(delta.map(|d| delta_color(d)).unwrap_or_default()),
+                .style(delta.map(delta_color).unwrap_or_default()),
                 Cell::from(short_one_line(&r.sample_status, 40))
                     .style(Style::default().fg(Color::DarkGray)),
             ])
@@ -818,7 +818,7 @@ fn draw_sparklines(f: &mut Frame, app: &App, area: Rect) {
         .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
         .split(g_area);
 
-    let cpu = (host.cpu_sum().min(100.0).max(0.0) / 100.0 * 100.0) as u16;
+    let cpu = (host.cpu_sum().clamp(0.0, 100.0) / 100.0 * 100.0) as u16;
     let mem = host.sys.mem_used_pct().clamp(0.0, 100.0) as u16;
     let swap = host.sys.swap_used_pct().clamp(0.0, 100.0) as u16;
 

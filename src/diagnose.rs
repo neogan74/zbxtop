@@ -13,6 +13,7 @@ use crate::zbxstats::CacheName;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
+    #[allow(dead_code)]
     Info,
     Warning,
     Critical,
@@ -197,14 +198,13 @@ fn rule_busy_cpu_delta(app: &HostState) -> Option<Diagnosis> {
         };
         if let Some(p) = stats.process.get(&r.role) {
             let delta = p.busy.avg - busy_ps;
-            if delta >= 30.0 {
-                if worst
+            if delta >= 30.0
+                && worst
                     .as_ref()
                     .map(|w| delta > w.1)
                     .unwrap_or(true)
-                {
-                    worst = Some((r.role.clone(), delta));
-                }
+            {
+                worst = Some((r.role.clone(), delta));
             }
         }
     }
