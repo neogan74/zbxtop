@@ -117,9 +117,10 @@ impl RecordedMsg {
             },
             CollectorMsg::LogStreamLine(l) => Self::LogStreamLine(l.clone()),
             CollectorMsg::LogStreamStatus(s) => Self::LogStreamStatus(s.clone()),
-            // Reset is not recorded — it is a synthetic signal that exists
-            // only in-memory between the replay loop and the event loop.
-            CollectorMsg::Reset => Self::LogStreamStatus(crate::source::LogStreamStatus::default()),
+            // Reset is a synthetic signal between the replay loop and the event
+            // loop; main.rs filters it out before calling write(), so this path
+            // must never be reached — no fake variant to silently fall back to.
+            CollectorMsg::Reset => unreachable!("Reset must be filtered out before recording"),
         }
     }
 

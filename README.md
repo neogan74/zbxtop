@@ -399,7 +399,8 @@ src/
   hosts.rs         — TOML config for multi-host (v0.5a)
   record.rs        — record and replay telemetry as JSONL (v0.6/v0.6.1)
   probes.rs        — synthetic TCP/DNS/PG probes (v0.7)
-  ui.rs            — ratatui rendering (header, tabs, panels, modal, overview)
+  ui/              — ratatui rendering: chrome (header/tabs/footer), one module
+                     per tab, modals, shared helpers
 ```
 
 **Polling architecture (v0.2a+b).** Each collector lives in its own

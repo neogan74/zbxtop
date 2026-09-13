@@ -574,12 +574,13 @@ mod tests {
 
     #[test]
     fn connection_stats_totals() {
-        let mut c = ConnectionStats::default();
-        c.active = 3;
-        c.idle = 10;
-        c.idle_in_transaction = 1;
-        c.waiting = 2;
-        c.other = 0;
+        let c = ConnectionStats {
+            active: 3,
+            idle: 10,
+            idle_in_transaction: 1,
+            waiting: 2,
+            other: 0,
+        };
         assert_eq!(c.total(), 16);
     }
 

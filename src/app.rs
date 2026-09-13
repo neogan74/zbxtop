@@ -396,7 +396,7 @@ impl App {
                     .map(|s| (i, s))
             })
             .collect();
-        scored.sort_by(|a, b| b.1.cmp(&a.1));
+        scored.sort_by_key(|&(_, s)| std::cmp::Reverse(s));
         scored.into_iter().map(|(i, _)| i).collect()
     }
 }
@@ -432,31 +432,6 @@ pub fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
         Some(score - (t.len() as i32))
     } else {
         None
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn fuzzy_matches_subsequence() {
-        assert!(fuzzy_score("prod", "zbx-prod-01").is_some());
-        assert!(fuzzy_score("prd", "zbx-prod-01").is_some());
-        assert!(fuzzy_score("xyz", "zbx-prod-01").is_none());
-    }
-
-    #[test]
-    fn fuzzy_consecutive_beats_scattered() {
-        let exact = fuzzy_score("prod", "zbx-prod-01").unwrap();
-        let scattered = fuzzy_score("pro1", "p-r-o-1-x").unwrap();
-        // consecutive "prod" should score higher than scattered
-        assert!(exact > scattered);
-    }
-
-    #[test]
-    fn fuzzy_empty_query_passes() {
-        assert!(fuzzy_score("", "anything").is_some());
     }
 }
 
@@ -543,5 +518,30 @@ impl App {
                 t.ttl_ticks -= 1;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fuzzy_matches_subsequence() {
+        assert!(fuzzy_score("prod", "zbx-prod-01").is_some());
+        assert!(fuzzy_score("prd", "zbx-prod-01").is_some());
+        assert!(fuzzy_score("xyz", "zbx-prod-01").is_none());
+    }
+
+    #[test]
+    fn fuzzy_consecutive_beats_scattered() {
+        let exact = fuzzy_score("prod", "zbx-prod-01").unwrap();
+        let scattered = fuzzy_score("pro1", "p-r-o-1-x").unwrap();
+        // consecutive "prod" should score higher than scattered
+        assert!(exact > scattered);
+    }
+
+    #[test]
+    fn fuzzy_empty_query_passes() {
+        assert!(fuzzy_score("", "anything").is_some());
     }
 }

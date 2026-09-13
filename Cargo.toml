@@ -1,6 +1,6 @@
 [package]
 name = "ztop"
-version = "0.1.0"
+version = "0.7.0"
 edition = "2021"
 description = "TUI monitor for zabbix_server internals over SSH"
 license = "MIT"

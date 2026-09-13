@@ -442,9 +442,11 @@ mod tests {
 
     #[test]
     fn detects_cache_full_warning() {
-        let mut s = ZabbixStats::default();
         // Inject wcache with pfree = 3  → used = 97%
-        s.wcache = serde_json::json!({"pfree": 3.0});
+        let s = ZabbixStats {
+            wcache: serde_json::json!({"pfree": 3.0}),
+            ..Default::default()
+        };
         let host = host_with(Some(s), None, vec![]);
         let diag = diagnose(&host);
         let d = diag
@@ -456,8 +458,10 @@ mod tests {
 
     #[test]
     fn detects_cache_full_critical() {
-        let mut s = ZabbixStats::default();
-        s.vcache = serde_json::json!({"buffer": {"pfree": 0.5}});
+        let s = ZabbixStats {
+            vcache: serde_json::json!({"buffer": {"pfree": 0.5}}),
+            ..Default::default()
+        };
         let host = host_with(Some(s), None, vec![]);
         let diag = diagnose(&host);
         let d = diag
