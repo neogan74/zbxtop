@@ -51,7 +51,7 @@ Don't want to risk a production Zabbix? Bring up the full stack locally with
 docker-compose — all four layers (OS / Zabbix / PG / probes) work end-to-end,
 including stress scenarios that can trigger specific diagnose rules:
 
-```
+```bash
 cd docker && ./setup.sh && docker compose up -d --build
 cargo run --release -- --config docker/hosts.toml
 ```
@@ -60,7 +60,7 @@ Details: [docker/README.md](docker/README.md).
 
 ## Build
 
-```
+```bash
 cargo build --release
 ```
 
@@ -70,7 +70,7 @@ The resulting binary is `target/release/ztop` (~3–5 MB, statically linked for 
 
 **Single-host (CLI):**
 
-```
+```bash
 ztop --host zbx-prod-01 \
      --log  /var/log/zabbix/zabbix_server.log \
      --sudo                 # optional, see below
@@ -112,6 +112,7 @@ a **`0 Overview`** tab with a health indicator for all hosts, and a
 diagnosis count with critical highlights).
 
 Switching between hosts:
+
 - **Ctrl-N / Ctrl-P** — from any tab, sequential cycling.
 - On Overview — `↑`/`↓` (or `j`/`k`) move the **cursor** (`▸`), **Enter**
   sets the focused host (`●`) and immediately switches to `1 Processes`.
@@ -170,7 +171,7 @@ then replay it as a live session.
 
 **Record an incident:**
 
-```
+```bash
 ztop --record incident-2026-05-13.jsonl
 ```
 
@@ -180,7 +181,7 @@ collector message with a timestamp.
 
 **Replay a recording:**
 
-```
+```bash
 ztop --replay incident-2026-05-13.jsonl
 ztop --replay incident.jsonl --replay-speed 10    # 10x faster
 ```
@@ -194,12 +195,12 @@ You can scrub through the incident and see when each diagnosis lit up.
 
 **Replay controls (v0.6.1):**
 
-| Key         | Action |
-|-------------|--------|
-| `Space`     | Pause / resume |
-| `n`         | Step — one event forward (while paused) |
-| `>` or `.`  | Seek 60 seconds forward |
-| `<` or `,`  | Seek 60 seconds backward (resets state, rebuilds from new events) |
+| Key          | Action                                                            |
+|--------------|-------------------------------------------------------------------|
+| `Space`      | Pause / resume                                                    |
+| `n`          | Step — one event forward (while paused)                           |
+| `>` or `.`   | Seek 60 seconds forward                                           |
+| `<` or `,`   | Seek 60 seconds backward (resets state, rebuilds from new events) |
 
 When seeking backward, host state is **reset** via a synthetic
 `CollectorMsg::Reset` — otherwise the screen would show data from the "future"
@@ -220,7 +221,7 @@ Size: with a 3-host setup and moderate activity — ~10–50 KB/sec,
 
 `zabbix_server.conf` must allow the IP from which ztop connects:
 
-```
+```ini
 StatsAllowedIP=10.0.0.1,192.168.0.0/24
 # or just 127.0.0.1 if ztop runs on the same machine
 ```
@@ -238,6 +239,7 @@ ztop connects to the database directly and runs 6 queries: connections, top long
 queries, lock waiters, Zabbix table sizes, replication lag, version.
 
 The backend is selected by URL scheme:
+
 - `postgres://...` or `postgresql://...` → PostgreSQL (`tokio-postgres`)
 - `mysql://...` → MySQL/MariaDB (`mysql_async`)
 - no scheme → default PG (libpq key=value also works here)
@@ -256,14 +258,14 @@ GRANT SELECT ON pg_catalog.pg_namespace  TO ztop_ro;
 
 Running:
 
-```
+```bash
 ztop --host zbx-prod-01 \
      --db-url 'postgres://ztop_ro:<pass>@db-host:5432/zabbix?sslmode=disable'
 ```
 
 The password in the URL is visible in `ps`/`/proc`. On production it is better to use an env var:
 
-```
+```bash
 export ZTOP_DB_URL='postgres://ztop_ro:<pass>@db-host:5432/zabbix'
 ztop --host zbx-prod-01
 ```
@@ -288,7 +290,7 @@ automatically falls back to a simplified PROCESSLIST without `wait_event`.
 
 Running with MySQL:
 
-```
+```bash
 ztop --host zbx-prod-01 \
      --db-url 'mysql://ztop_ro:<pass>@db-host:3306/zabbix?ssl-mode=REQUIRED'
 ```
@@ -297,6 +299,7 @@ ztop --host zbx-prod-01 \
 
 **PostgreSQL.** The TLS connector is always present via `postgres-native-tls`;
 behavior is controlled by the `sslmode=` URL parameter:
+
 - `sslmode=disable` — plain TCP (default for URLs without explicit mode).
 - `sslmode=prefer` — TLS if the server supports it, otherwise plain (libpq default).
 - `sslmode=require` — TLS mandatory, no CA verification required.
@@ -307,6 +310,7 @@ use `--db-insecure-tls` (env `ZTOP_DB_INSECURE_TLS=true`): accepts any cert
 without verification. **Do not use in production over WAN.**
 
 **MySQL.** TLS is controlled via URL parameters through mysql_async:
+
 - `?ssl-mode=DISABLED` — no TLS
 - `?ssl-mode=REQUIRED` — TLS mandatory, no CA verification
 - `?ssl-mode=VERIFY_CA`/`VERIFY_IDENTITY` — full verification
@@ -318,7 +322,7 @@ reads the password from standard libpq-/mysql-compatible files.
 
 **PostgreSQL — `~/.pgpass`** (or `$PGPASSFILE`):
 
-```
+```text
 # host:port:database:user:password
 db-host:5432:zabbix:ztop_ro:s3cret
 *:5432:*:ztop_ro:fallback-password
@@ -370,16 +374,18 @@ typically `zabbix` or `root`. Options:
 
 1. **SSH login as the zabbix user** — simplest option, `--sudo` is not needed.
 2. **Login as a regular user + `--sudo`** — add a sudoers entry:
-   ```
+
+   ```text
    ztopuser ALL=(root) NOPASSWD: /usr/sbin/zabbix_server -R *
    ```
+
    ztop calls `sudo -n` (passwordless), so NOPASSWD is required.
 
 For viewing logs and `ps`/`/proc`, sudo is usually not needed.
 
 ## Structure
 
-```
+```text
 src/
   main.rs          — CLI, terminal setup, channel-based event loop
   app.rs           — state, ring buffers for history, apply_msg
@@ -393,7 +399,8 @@ src/
   hosts.rs         — TOML config for multi-host (v0.5a)
   record.rs        — record and replay telemetry as JSONL (v0.6/v0.6.1)
   probes.rs        — synthetic TCP/DNS/PG probes (v0.7)
-  ui.rs            — ratatui rendering (header, tabs, panels, modal, overview)
+  ui/              — ratatui rendering: chrome (header/tabs/footer), one module
+                     per tab, modals, shared helpers
 ```
 
 **Polling architecture (v0.2a+b).** Each collector lives in its own

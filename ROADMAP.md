@@ -12,12 +12,12 @@ ztop collects data from several sources with different "resilience" levels. The 
 sources are connected, the more precisely ztop can tell **what exactly broke**.
 Each layer fails earlier in an incident than the one before it:
 
-| Source                         | Alive while...                      | Implementation |
-|--------------------------------|-------------------------------------|----------------|
-| OS (SSH → `ps`, `/proc`, log)  | the machine itself is alive         | v0.1 (done) |
-| `zabbix.stats` TCP:10051       | the `zabbix_server` process is alive | v0.3 |
-| DB direct (`pg_stat_*`, MySQL) | the DB is alive (even if server is dead) | v0.4 |
-| HTTP API                       | PHP + Apache + DB are all alive     | **intentionally skipped** |
+| Source                         | Alive while...                           | Implementation            |
+|--------------------------------|------------------------------------------|---------------------------|
+| OS (SSH → `ps`, `/proc`, log)  | the machine itself is alive              | v0.1 (done)               |
+| `zabbix.stats` TCP:10051       | the `zabbix_server` process is alive     | v0.3                      |
+| DB direct (`pg_stat_*`, MySQL) | the DB is alive (even if server is dead) | v0.4                      |
+| HTTP API                       | PHP + Apache + DB are all alive          | **intentionally skipped** |
 
 One screen in the UI — multiple panels marked with the source: the user immediately sees
 which ones are "silent" and understands at which layer the failure occurred.
@@ -72,6 +72,7 @@ to 5–15 ms via unix-socket multiplexing — marginal win. We'll revisit only i
 profiling shows fork/exec ssh is a real bottleneck.
 
 When we get to it, scope:
+
 - [ ] Transport abstraction (enum `Transport::Process | Russh`).
 - [ ] Auth: SSH agent (via SSH_AUTH_SOCK) + identity file.
 - [ ] Known hosts: first iteration — `--insecure-host-key`, then parsing `~/.ssh/known_hosts`.
@@ -104,6 +105,7 @@ Client-side — TCP + Zabbix header (`ZBXD` + flags + length) + JSON.
 - [x] CLI: `--stats-host`, `--stats-port` (default 10051), `--no-stats`.
 
 Deferred to v0.3b:
+
 - [ ] Request `{"request":"zabbix.stats","type":"queue","params":{...}}` —
   queue histogram by delay buckets.
 - [ ] TLS PSK/cert on the trapper port (for setups with a secured trapper).
@@ -113,6 +115,7 @@ Deferred to v0.3b:
 **Boundary with v0.2 `diaginfo`:** some data overlaps. If the stats endpoint
 is available, `diaginfo` is only needed for top-N items in historycache/valuecache
 that are not in `stats`. Logic:
+
 - if `stats` responds — take cache/queue from there (cheap, synchronous);
 - `zabbix_server -R diaginfo` remains as a manual trigger (hotkey),
   which writes an extended dump to the log.
@@ -255,12 +258,12 @@ looking at a single tab.
   through rows, **Enter** — switches focused_host and immediately goes to
   drill-down (Tab::Processes). When entering Overview via `0`, cursor
   syncs with the current focused_host. Two markers:
-    - `▸` — cursor (current selection),
-    - `●` — focused (which host is shown in drill-down tabs).
+  - `▸` — cursor (current selection),
+  - `●` — focused (which host is shown in drill-down tabs).
 - [x] **Aggregate panel** below the Overview table — fleet-level metrics:
-    - Σ CPU (sum across all hosts), max load1, mem avg/max%, healthy ratio
-    - Σ queue (sum of queue sizes), total diagnosis count with
-      critical highlighted separately.
+  - Σ CPU (sum across all hosts), max load1, mem avg/max%, healthy ratio
+  - Σ queue (sum of queue sizes), total diagnosis count with
+    critical highlighted separately.
 
 ## v0.5c — large deployments (modal switcher) ✅
 
@@ -355,6 +358,7 @@ is on my specific laptop/network or the server/DB is genuinely failing.
 - [x] **Opt-in**: without `[[probe]]` blocks the tab shows a hint with an example.
 
 Deferred to v0.7.1:
+
 - [ ] **TLS handshake probe** via `tokio-native-tls`.
 - [ ] **MySQL probe** via `mysql_async`.
 - [ ] **HTTP probe**: GET with status code and timing (requires `reqwest`).
@@ -391,6 +395,7 @@ Deferred to v0.7.1:
   This turns manual verification into "run and confirm".
 
 Deferred:
+
 - [ ] **CI smoke test**: GitHub Actions brings up the testbed, runs stress
   scenarios, reads progress via record/replay, verifies expected
   diagnoses fired. This turns stress scenarios into e2e tests.
@@ -423,11 +428,11 @@ Deferred:
 
 Not priorities, but checkpoints — what will trigger picking up a task.
 
-| Trigger                                               | Task               |
-|-------------------------------------------------------|--------------------|
-| If ztop itself starts lagging on large installations  | v0.2 long SSH      |
-| If something critical slips between poll ticks in logs | v0.2 tail -F       |
-| If there's an incident where busy% ≠ CPU% significantly | v0.3 zabbix.stats |
-| If we catch an incident "DB is down, server is alive" | v0.4 DB scraper    |
-| If a second Zabbix server comes under management      | v0.5 multi-host    |
+| Trigger                                                  | Task               |
+|----------------------------------------------------------|--------------------|
+| If ztop itself starts lagging on large installations     | v0.2 long SSH      |
+| If something critical slips between poll ticks in logs   | v0.2 tail -F       |
+| If there's an incident where busy% ≠ CPU% significantly  | v0.3 zabbix.stats  |
+| If we catch an incident "DB is down, server is alive"    | v0.4 DB scraper    |
+| If a second Zabbix server comes under management         | v0.5 multi-host    |
 | If we have to write a post-mortem without full telemetry | v0.6 record/replay |

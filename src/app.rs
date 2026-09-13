@@ -33,6 +33,7 @@ pub struct History {
     pub cpu_total: VecDeque<f64>,
     pub mem_used_pct: VecDeque<f64>,
     pub load1: VecDeque<f64>,
+    #[allow(dead_code)]
     pub queue_proxy: VecDeque<f64>,
 }
 
@@ -229,8 +230,7 @@ impl HostState {
             }
             CollectorMsg::LogStreamStatus(status) => {
                 self.log_stream.connected = status.connected;
-                self.log_stream.reconnects =
-                    self.log_stream.reconnects.max(status.reconnects);
+                self.log_stream.reconnects = self.log_stream.reconnects.max(status.reconnects);
                 self.log_stream.last_error = status.last_error.clone();
 
                 if status.connected {
@@ -396,17 +396,14 @@ impl App {
                     .map(|s| (i, s))
             })
             .collect();
-        scored.sort_by(|a, b| b.1.cmp(&a.1));
+        scored.sort_by_key(|&(_, s)| std::cmp::Reverse(s));
         scored.into_iter().map(|(i, _)| i).collect()
     }
 }
 
-/// v0.5c: fuzzy subsequence match. Returns a score (higher is better)
-/// or None if the query is not a subsequence of the target at all.
-///
-/// Score = base points for each match + bonus for consecutive runs
-/// + bonus for a match at the start. This gives sensible ranking: "prod"
-/// matches "zbx-prod-01" more strongly than widely scattered "p…r…o…d".
+/// Fuzzy subsequence match. Returns a score (higher is better) or None if
+/// the query is not a subsequence of the target. Score = base points per
+/// match + bonus for consecutive runs + bonus for start-of-string match.
 pub fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
     if query.is_empty() {
         return Some(0);
@@ -438,31 +435,6 @@ pub fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn fuzzy_matches_subsequence() {
-        assert!(fuzzy_score("prod", "zbx-prod-01").is_some());
-        assert!(fuzzy_score("prd", "zbx-prod-01").is_some());
-        assert!(fuzzy_score("xyz", "zbx-prod-01").is_none());
-    }
-
-    #[test]
-    fn fuzzy_consecutive_beats_scattered() {
-        let exact = fuzzy_score("prod", "zbx-prod-01").unwrap();
-        let scattered = fuzzy_score("pro1", "p-r-o-1-x").unwrap();
-        // consecutive "prod" should score higher than scattered
-        assert!(exact > scattered);
-    }
-
-    #[test]
-    fn fuzzy_empty_query_passes() {
-        assert!(fuzzy_score("", "anything").is_some());
-    }
-}
-
 impl App {
     /// v0.7: применить результат пробы.
     pub fn apply_probe(&mut self, msg: crate::probes::ProbeMsg) {
@@ -487,6 +459,7 @@ impl App {
     pub fn focused(&self) -> &HostState {
         &self.hosts[self.focused_host]
     }
+    #[allow(dead_code)]
     pub fn focused_mut(&mut self) -> &mut HostState {
         &mut self.hosts[self.focused_host]
     }
@@ -545,5 +518,30 @@ impl App {
                 t.ttl_ticks -= 1;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fuzzy_matches_subsequence() {
+        assert!(fuzzy_score("prod", "zbx-prod-01").is_some());
+        assert!(fuzzy_score("prd", "zbx-prod-01").is_some());
+        assert!(fuzzy_score("xyz", "zbx-prod-01").is_none());
+    }
+
+    #[test]
+    fn fuzzy_consecutive_beats_scattered() {
+        let exact = fuzzy_score("prod", "zbx-prod-01").unwrap();
+        let scattered = fuzzy_score("pro1", "p-r-o-1-x").unwrap();
+        // consecutive "prod" should score higher than scattered
+        assert!(exact > scattered);
+    }
+
+    #[test]
+    fn fuzzy_empty_query_passes() {
+        assert!(fuzzy_score("", "anything").is_some());
     }
 }

@@ -33,7 +33,7 @@ impl SshTarget {
 
 fn default_opts() -> Vec<String> {
     // ControlMaster auto+ControlPersist greatly reduce latency for repeated commands.
-    // Socket path is in /tmp with a unique name per host.
+    // Socket path is under ~/.ssh with a unique name per host.
     vec![
         "-o".into(),
         "BatchMode=yes".into(),

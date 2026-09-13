@@ -448,7 +448,11 @@ async fn run_stream(
     initial_lines: usize,
     tx: &mpsc::Sender<HostMsg>,
 ) -> Result<()> {
-    let remote_cmd = format!("tail -n {} -F -- {} 2>/dev/null", initial_lines, shell_quote(log_path));
+    let remote_cmd = format!(
+        "tail -n {} -F -- {} 2>/dev/null",
+        initial_lines,
+        shell_quote(log_path)
+    );
 
     let mut cmd = Command::new("ssh");
     cmd.args(&target.extra_opts);

@@ -121,7 +121,10 @@ pub async fn fetch_stats(target: &ZbxStatsTarget) -> Result<ZabbixStats> {
         format!(
             "parse stats JSON ({}): {}",
             body.len(),
-            String::from_utf8_lossy(&body).chars().take(200).collect::<String>()
+            String::from_utf8_lossy(&body)
+                .chars()
+                .take(200)
+                .collect::<String>()
         )
     })?;
 

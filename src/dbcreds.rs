@@ -99,7 +99,7 @@ impl ParsedUrl {
 fn parse_db_url(url: &str) -> Option<ParsedUrl> {
     let (scheme, rest) = url.split_once("://")?;
     // Split into authority and path?query: find the first '/' or '?'.
-    let (authority, tail) = match rest.find(|c| c == '/' || c == '?') {
+    let (authority, tail) = match rest.find(['/', '?']) {
         Some(i) => (&rest[..i], &rest[i..]),
         None => (rest, ""),
     };
@@ -120,7 +120,10 @@ fn parse_db_url(url: &str) -> Option<ParsedUrl> {
         // IPv6 в квадратных скобках: [::1]:5432
         if let Some(end) = hostport.find(']') {
             let h = &hostport[1..end];
-            let port = hostport[end + 1..].trim_start_matches(':').parse::<u16>().ok();
+            let port = hostport[end + 1..]
+                .trim_start_matches(':')
+                .parse::<u16>()
+                .ok();
             (h.to_string(), port)
         } else {
             (hostport.to_string(), None)
@@ -135,7 +138,10 @@ fn parse_db_url(url: &str) -> Option<ParsedUrl> {
     let (database, query) = if let Some(q_idx) = tail.find('?') {
         let path = &tail[..q_idx];
         let q = &tail[q_idx + 1..];
-        (path.trim_start_matches('/').to_string(), Some(q.to_string()))
+        (
+            path.trim_start_matches('/').to_string(),
+            Some(q.to_string()),
+        )
     } else {
         (tail.trim_start_matches('/').to_string(), None)
     };
@@ -296,7 +302,10 @@ fn parse_my_cnf(content: &str) -> HashMap<String, String> {
             continue;
         }
         if line.starts_with('[') && line.ends_with(']') {
-            in_client = matches!(&line[1..line.len() - 1], "client" | "mysql" | "client-server");
+            in_client = matches!(
+                &line[1..line.len() - 1],
+                "client" | "mysql" | "client-server"
+            );
             continue;
         }
         if !in_client {
@@ -326,8 +335,8 @@ mod tests {
 
     #[test]
     fn parses_simple_pg_url() {
-        let u = parse_db_url("postgres://user:pass@host:5432/zabbix?sslmode=require")
-            .expect("parse");
+        let u =
+            parse_db_url("postgres://user:pass@host:5432/zabbix?sslmode=require").expect("parse");
         assert_eq!(u.scheme, "postgres");
         assert_eq!(u.user, "user");
         assert_eq!(u.password.as_deref(), Some("pass"));
@@ -384,7 +393,10 @@ bind-address = 0.0.0.0
         // strip_quotes is applied at the top level, not inside parse_my_cnf
         let pw = strip_quotes(creds.get("password").unwrap());
         assert_eq!(pw, "sec:ret");
-        assert_eq!(creds.get("host").map(|s| s.as_str()), Some("db.example.com"));
+        assert_eq!(
+            creds.get("host").map(|s| s.as_str()),
+            Some("db.example.com")
+        );
     }
 
     #[test]

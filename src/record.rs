@@ -39,6 +39,7 @@ const FORMAT_VERSION: &str = "0.6";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub enum Line {
     Header(HeaderLine),
     Event(EventLine),
@@ -99,38 +100,27 @@ impl RecordedMsg {
     pub fn from_collector(msg: &CollectorMsg) -> Self {
         match msg {
             CollectorMsg::Procs { result, took } => Self::Procs {
-                result: result
-                    .as_ref()
-                    .cloned()
-                    .map_err(|e| format!("{e:#}")),
+                result: result.as_ref().cloned().map_err(|e| format!("{e:#}")),
                 took_ms: took.as_millis() as u64,
             },
             CollectorMsg::Sys { result, took } => Self::Sys {
-                result: result
-                    .as_ref()
-                    .cloned()
-                    .map_err(|e| format!("{e:#}")),
+                result: result.as_ref().cloned().map_err(|e| format!("{e:#}")),
                 took_ms: took.as_millis() as u64,
             },
             CollectorMsg::Stats { result, took } => Self::Stats {
-                result: result
-                    .as_ref()
-                    .cloned()
-                    .map_err(|e| format!("{e:#}")),
+                result: result.as_ref().cloned().map_err(|e| format!("{e:#}")),
                 took_ms: took.as_millis() as u64,
             },
             CollectorMsg::Db { result, took } => Self::Db {
-                result: result
-                    .as_ref()
-                    .cloned()
-                    .map_err(|e| format!("{e:#}")),
+                result: result.as_ref().cloned().map_err(|e| format!("{e:#}")),
                 took_ms: took.as_millis() as u64,
             },
             CollectorMsg::LogStreamLine(l) => Self::LogStreamLine(l.clone()),
             CollectorMsg::LogStreamStatus(s) => Self::LogStreamStatus(s.clone()),
-            // Reset is not recorded — it is a synthetic signal that exists
-            // only in-memory between the replay loop and the event loop.
-            CollectorMsg::Reset => Self::LogStreamStatus(crate::source::LogStreamStatus::default()),
+            // Reset is a synthetic signal between the replay loop and the event
+            // loop; main.rs filters it out before calling write(), so this path
+            // must never be reached — no fake variant to silently fall back to.
+            CollectorMsg::Reset => unreachable!("Reset must be filtered out before recording"),
         }
     }
 
@@ -217,8 +207,7 @@ impl Drop for Recorder {
 
 /// Read only the header — used to build the host list before starting the event loop.
 pub fn read_header(path: &Path) -> Result<HeaderLine> {
-    let file = File::open(path)
-        .with_context(|| format!("open replay file {}", path.display()))?;
+    let file = File::open(path).with_context(|| format!("open replay file {}", path.display()))?;
     let mut reader = BufReader::new(file);
     let mut first = String::new();
     reader.read_line(&mut first)?;
@@ -226,8 +215,7 @@ pub fn read_header(path: &Path) -> Result<HeaderLine> {
     if first.is_empty() {
         return Err(anyhow!("replay file is empty"));
     }
-    let line: Line = serde_json::from_str(first)
-        .with_context(|| "parse first line as header")?;
+    let line: Line = serde_json::from_str(first).with_context(|| "parse first line as header")?;
     match line {
         Line::Header(h) => {
             if h.version != FORMAT_VERSION {
@@ -260,8 +248,7 @@ pub enum ReplayCmd {
 /// one-hour recording with ~3 hosts ≈ 50-200 MB; acceptable for a post-mortem tool.
 /// Lazy-streaming (as in v0.6) only allows forward seeking, which is not useful.
 pub fn load_recording(path: &Path) -> Result<(HeaderLine, Vec<EventLine>)> {
-    let file = File::open(path)
-        .with_context(|| format!("open replay file {}", path.display()))?;
+    let file = File::open(path).with_context(|| format!("open replay file {}", path.display()))?;
     let reader = BufReader::new(file);
     let mut lines = reader.lines();
 

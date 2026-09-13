@@ -107,7 +107,11 @@ pub fn aggregate_roles(procs: &[ZbxProc]) -> Vec<ZbxRoleAgg> {
     }
     let mut v: Vec<_> = map.into_values().collect();
     // Sort by total CPU descending — most active roles at the top.
-    v.sort_by(|a, b| b.cpu_sum.partial_cmp(&a.cpu_sum).unwrap_or(std::cmp::Ordering::Equal));
+    v.sort_by(|a, b| {
+        b.cpu_sum
+            .partial_cmp(&a.cpu_sum)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     v
 }
 
@@ -206,9 +210,18 @@ pub async fn fetch_sys(t: &SshTarget) -> Result<SysStats> {
             "--MEMINFO--" => section = "mem",
             "--UPTIME--" => section = "up",
             _ => match section {
-                "load" => { load_buf.push_str(line); load_buf.push('\n'); }
-                "mem" => { mem_buf.push_str(line); mem_buf.push('\n'); }
-                "up" => { up_buf.push_str(line); up_buf.push('\n'); }
+                "load" => {
+                    load_buf.push_str(line);
+                    load_buf.push('\n');
+                }
+                "mem" => {
+                    mem_buf.push_str(line);
+                    mem_buf.push('\n');
+                }
+                "up" => {
+                    up_buf.push_str(line);
+                    up_buf.push('\n');
+                }
                 _ => {}
             },
         }
@@ -246,10 +259,7 @@ pub enum LogLevel {
 pub fn classify(line: &str) -> LogLevel {
     // Zabbix does not explicitly mark the level in every line, but heuristics work:
     let l = line.to_lowercase();
-    if l.contains("[z3001]")
-        || l.contains("cannot ")
-        || l.contains("error")
-        || l.contains("failed")
+    if l.contains("[z3001]") || l.contains("cannot ") || l.contains("error") || l.contains("failed")
     {
         LogLevel::Error
     } else if l.contains("slow query")
@@ -399,7 +409,10 @@ mod tests {
 
     #[test]
     fn classifies_log_levels() {
-        assert_eq!(classify("12:00:00 [Z3001] connection failed"), LogLevel::Error);
+        assert_eq!(
+            classify("12:00:00 [Z3001] connection failed"),
+            LogLevel::Error
+        );
         assert_eq!(classify("12:00:00 cannot connect to db"), LogLevel::Error);
         assert_eq!(classify("slow query took 5 seconds"), LogLevel::Warning);
         assert_eq!(classify("housekeeper deleted 1234 rows"), LogLevel::Warning);

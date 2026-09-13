@@ -409,7 +409,8 @@ src/
   hosts.rs         — TOML-конфиг multi-host (v0.5a)
   record.rs        — запись и replay телеметрии в JSONL (v0.6/v0.6.1)
   probes.rs        — синтетические пробы TCP/DNS/PG (v0.7)
-  ui.rs            — ratatui-рендеринг (header, tabs, табы, модал, overview)
+  ui/              — ratatui-рендеринг: chrome (header/tabs/footer),
+                     по модулю на таб, модалы, общие хелперы
 ```
 
 **Архитектура опроса (v0.2a+b).** Каждый коллектор живёт в своей
